@@ -1,0 +1,32 @@
+digraph CFG {
+    /* 由 elfcfg 自动生成 —— 函数 classify 的控制流图 */
+    /* 入口: 0x4011cd  基本块: 9  边: 11 */
+    rankdir=TB;
+    labelloc="t";
+    fontname="Helvetica";
+    label="Control Flow Graph of classify()"
+    node [shape=box, fontname="Courier New", fontsize=10, style=filled, fillcolor="#eef4ff", color="#3b6ea5"];
+    edge [fontname="Helvetica", fontsize=9, color="#333333"];
+
+    B0 [label="B0\l0x4011cd:  push %rbp\l0x4011ce:  mov %rsp,%rbp\l0x4011d1:  mov %edi,-0x14(%rbp)\l0x4011d4:  mov $0x0,-0x4(%rbp)\l0x4011db:  cmp $0x64,-0x14(%rbp)\l0x4011df:  jle 0x4011ea\l", fillcolor="#d8f0d8", color="#2e7d32"];
+    B1 [label="B1\l0x4011e1:  mov $0x64,-0x4(%rbp)\l0x4011e8:  jmp 0x401200\l"];
+    B2 [label="B2\l0x4011ea:  cmp $0x0,-0x14(%rbp)\l0x4011ee:  jle 0x4011f8\l"];
+    B3 [label="B3\l0x4011f0:  mov -0x14(%rbp),%eax\l0x4011f3:  mov %eax,-0x4(%rbp)\l0x4011f6:  jmp 0x401200\l"];
+    B4 [label="B4\l0x4011f8:  mov -0x14(%rbp),%eax\l0x4011fb:  neg %eax\l0x4011fd:  mov %eax,-0x4(%rbp)\l"];
+    B5 [label="B5\l0x401200:  mov $0x0,-0x8(%rbp)\l0x401207:  jmp 0x401213\l"];
+    B6 [label="B6\l0x401209:  mov -0x8(%rbp),%eax\l0x40120c:  add %eax,-0x4(%rbp)\l0x40120f:  add $0x1,-0x8(%rbp)\l"];
+    B7 [label="B7\l0x401213:  cmp $0x2,-0x8(%rbp)\l0x401217:  jle 0x401209\l"];
+    B8 [label="B8\l0x401219:  mov -0x4(%rbp),%eax\l0x40121c:  pop %rbp\l0x40121d:  ret\l", fillcolor="#ffe0e0", color="#b71c1c"];
+
+    B0 -> B2 [label="jle"];
+    B0 -> B1 [label="fall"];
+    B1 -> B5 [label="jmp"];
+    B2 -> B4 [label="jle"];
+    B2 -> B3 [label="fall"];
+    B3 -> B5 [label="jmp"];
+    B4 -> B5 [label="fall"];
+    B5 -> B7 [label="jmp"];
+    B6 -> B7 [label="fall"];
+    B7 -> B6 [label="jle", color="#cc0000", fontcolor="#cc0000", penwidth=2, style=bold, constraint=false];
+    B7 -> B8 [label="fall"];
+}

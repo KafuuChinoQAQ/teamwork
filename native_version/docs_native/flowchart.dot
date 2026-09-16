@@ -1,0 +1,85 @@
+/* 程序流程图 —— elfcfg native 版本
+ * 渲染：dot -Tpng flowchart.dot -o flowchart_native.png
+ */
+digraph Flowchart {
+    rankdir=TB;
+    graph [fontname="Droid Sans Fallback", fontsize=14, labelloc="t",
+           label="elfcfg 程序流程图（native 版本，全程不调用外部程序）\n",
+           bgcolor="white", nodesep=0.30, ranksep=0.26];
+    node  [fontname="Droid Sans Fallback", fontsize=10, shape=box,
+           style="filled,rounded", fillcolor="#eef4ff", color="#3b6ea5", penwidth=1.1];
+    edge  [color="#444444", arrowsize=0.7, fontname="Droid Sans Fallback", fontsize=9];
+
+    /* ---------- 参数与文件访问 ---------- */
+    start  [label="启动", shape=ellipse, style=filled, fillcolor="#f0f0f0", color="#555555"];
+    argv   [label="解析命令行参数\n--info / --symbols / --disasm / --cfg / --summary / --text"];
+    chk    [label="参数合法?", shape=diamond, style=filled, fillcolor="#fff4d8", color="#b8860b", height=0.8, width=1.6];
+    usage  [label="打印用法 / 报错", fillcolor="#ffe0e0", color="#b71c1c"];
+    endu   [label="退出", shape=ellipse, style=filled, fillcolor="#f0f0f0", color="#555555"];
+
+    openf  [label="① BinaryFile::openFile()\nopen(2) → fstat(2) → mmap(2)", fillcolor="#dde7f5", penwidth=1.8];
+    ehdr   [label="② ElfHeaderView::parse()\n校验 magic / ELFCLASS64 / 小端 / EM_X86_64"];
+    ehbad  [label="报错：不是有效的 ELF64 x86-64", fillcolor="#ffe0e0", color="#b71c1c"];
+    sect   [label="③ SectionTable::parse()\n解析节头表 + 绑定节名表"];
+    strt   [label="④ StringTable::bind()\n字符串表视图（越界返回 NULL）"];
+    symb   [label="⑤ SymbolTable::parse()\n.symtab/.strtab（退回 .dynsym/.dynstr）"];
+    funct  [label="⑥ FunctionTable::build()\n汇总所有 STT_FUNC 符号"];
+    findf  [label="⑦ findFunction(名字)\nst_value → 文件偏移 → 机器码指针"];
+    nfnd   [label="报错：找不到函数\n提示用 --symbols 查看", fillcolor="#ffe0e0", color="#b71c1c"];
+    code   [label="取得机器码 code / size", shape=parallelogram, style=filled, fillcolor="#d8f0d8", color="#2e7d32"];
+
+    /* ---------- 解码 ---------- */
+    dec    [label="⑧ X86_64Decoder::decode() 逐条解码\n前缀 → REX → opcode → ModRM → SIB → 位移 → 立即数", fillcolor="#dde7f5", penwidth=1.8];
+    decbad [label="不支持该 opcode\n报错并【停止】解码（绝不猜长度）", fillcolor="#ffe8e8", color="#b71c1c"];
+    insts  [label="Instruction 双向链表", shape=parallelogram, style=filled, fillcolor="#d8f0d8", color="#2e7d32"];
+
+    /* ---------- CFG ---------- */
+    leader [label="⑨ LinearBasicBlockBuilder::build()\nLeader 法：①首条指令 ②跳转目标 ③跳转的下一句", fillcolor="#dde7f5", penwidth=1.8];
+    blocks [label="BasicBlock 链表", shape=parallelogram, style=filled, fillcolor="#d8f0d8", color="#2e7d32"];
+    edges  [label="⑩ X86EdgeAnalyzer::analyze()\n只看块尾指令：Jcc→2条 / jmp→1条 / ret→0条", fillcolor="#dde7f5", penwidth=1.8];
+    elist  [label="Edge 链表", shape=parallelogram, style=filled, fillcolor="#d8f0d8", color="#2e7d32"];
+    cfg    [label="ControlFlowGraph（块 + 边 + 入口 + 统计）", shape=parallelogram, style=filled, fillcolor="#d8f0d8", color="#2e7d32"];
+
+    /* ---------- 分析 ---------- */
+    passes [label="⑪ AnalysisPass* 数组驱动\nReachability / LoopHint / Statistics", fillcolor="#dde7f5", penwidth=1.8];
+    out    [label="⑫ GraphWriter::write()", fillcolor="#dde7f5", penwidth=1.8];
+    dot    [label="DOT 文本 → stdout", shape=parallelogram, style=filled, fillcolor="#d8f0d8", color="#2e7d32"];
+    fin    [label="elfcfg 运行结束\n（DOT 已写入 stdout）", shape=ellipse, style=filled, fillcolor="#f0f0f0", color="#555555"];
+
+    /* ---------- 程序外部 ---------- */
+    rend   [label="（程序外部的展示步骤）\ndot -Tpng 渲染成图片", style="filled,rounded,dashed",
+            fillcolor="#f7f7f7", color="#999999", fontcolor="#555555"];
+    endy   [label="课堂展示", shape=ellipse, style=filled, fillcolor="#f0f0f0", color="#555555"];
+
+    /* ---------- 连接 ---------- */
+    start -> argv -> chk;
+    chk   -> usage [label="否", fontcolor="#b71c1c"];
+    usage -> endu;
+    chk   -> openf [label="是", fontcolor="#2e7d32"];
+    openf -> ehdr;
+    ehdr  -> ehbad [label="校验失败", fontcolor="#b71c1c"];
+    ehbad -> endu;
+    ehdr  -> sect  [label="通过", fontcolor="#2e7d32"];
+    sect  -> strt;
+    strt  -> symb;
+    symb  -> funct;
+    funct -> findf;
+    findf -> nfnd  [label="未找到", fontcolor="#b71c1c"];
+    nfnd  -> endu;
+    findf -> code  [label="找到", fontcolor="#2e7d32"];
+    code  -> dec;
+    dec   -> decbad [label="未知 opcode", fontcolor="#b71c1c"];
+    decbad-> insts  [label="保留已解出的部分", style=dashed, fontcolor="#b71c1c"];
+    dec   -> insts  [label="全部成功"];
+    insts -> leader;
+    leader-> blocks;
+    blocks-> edges;
+    edges -> elist;
+    elist -> cfg;
+    cfg   -> passes;
+    passes-> out;
+    out   -> dot;
+    dot   -> fin;
+    fin   -> rend  [style=dashed, color="#999999", fontcolor="#777777", label="程序外部"];
+    rend  -> endy;
+}

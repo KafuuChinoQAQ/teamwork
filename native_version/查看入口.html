@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>elfcfg native 版本 —— 完全自研的 ELF 控制流图工具</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: "Microsoft YaHei", "Noto Sans CJK SC", "PingFang SC", sans-serif;
+         max-width: 1150px; margin: 0 auto; padding: 24px 28px 60px;
+         color: #222; line-height: 1.7; background: #fafafa; }
+  h1 { color: #2c5f8a; border-bottom: 3px solid #2c5f8a; padding-bottom: 10px; margin-bottom: 6px; }
+  h2 { color: #2c5f8a; margin-top: 40px; border-left: 6px solid #2c5f8a;
+       padding-left: 12px; background: #eef4ff; border-radius: 0 4px 4px 0; padding-top: 6px; padding-bottom: 6px; }
+  h3 { color: #333; margin-top: 24px; }
+  .sub { color: #666; font-size: 14px; margin-top: 0; }
+  pre { background: #1e1e2e; color: #e8e8e8; padding: 14px 16px; border-radius: 6px;
+        overflow-x: auto; font-family: Consolas, "Courier New", monospace; font-size: 13px;
+        line-height: 1.55; }
+  code { font-family: Consolas, "Courier New", monospace; background: #eceff4;
+         padding: 1px 5px; border-radius: 3px; font-size: 13.5px; color: #b71c1c; }
+  pre code { background: none; padding: 0; color: inherit; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; background: #fff; font-size: 14.5px; }
+  th, td { border: 1px solid #d0d7de; padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: #eef4ff; color: #2c5f8a; }
+  tr:nth-child(even) td { background: #fafbfc; }
+  .ok { color: #2e7d32; font-weight: bold; }
+  .no { color: #b71c1c; font-weight: bold; }
+  .box { background: #fff; border: 1px solid #d0d7de; border-left: 5px solid #2c5f8a;
+         border-radius: 6px; padding: 14px 18px; margin: 16px 0; }
+  .good { border-left-color: #2e7d32; background: #f4fbf4; }
+  .warn { border-left-color: #e6a700; background: #fffdf5; }
+  img { max-width: 100%; border: 1px solid #ccc; border-radius: 6px;
+        background: #fff; display: block; margin: 12px auto; }
+  .cap { text-align: center; color: #666; font-size: 13.5px; margin-top: -4px; }
+  .toc { background: #fff; border: 1px solid #d0d7de; border-radius: 6px; padding: 12px 22px; }
+  .toc ol { margin: 6px 0; padding-left: 22px; }
+  .toc a { color: #2c5f8a; text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 34px 0; }
+  .hl { background: #fff8e6; padding: 1px 5px; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<h1>elfcfg —— Linux 命令行 ELF 控制流图绘制工具</h1>
+<p class="sub">
+  <strong>native 版本</strong> · 完全自研，不调用任何外部程序<br>
+  《软件安全原理》课堂练习 · C++ 实现，不使用 STL 与任何第三方库
+</p>
+
+<div class="box good">
+  <strong>这一版和上一版的区别：</strong>
+  上一版调用外部 <code>objdump</code> 获取反汇编再自行分析；
+  本版把 <span class="hl">ELF 解析、函数定位、机器码解码</span>也全部自己实现 ——
+  从打开文件到画出控制流图，<strong>全程不启动任何外部程序</strong>。<br>
+  <strong>验收确认：</strong>无 STL 头文件 · 无 Capstone/LLVM/libelf/libbfd ·
+  无 <code>popen</code>/<code>system</code>/<code>exec</code>/<code>fork</code> ·
+  源码中无 objdump/readelf/nm 调用。
+</div>
+
+<div class="toc">
+  <strong>本页目录</strong>
+  <ol>
+    <li><a href="#quick">编译与运行</a></li>
+    <li><a href="#stats">实测数据（6 个测试函数）</a></li>
+    <li><a href="#cfg">classify 的控制流图</a></li>
+    <li><a href="#uml">UML 类图</a></li>
+    <li><a href="#flow">程序流程图</a></li>
+    <li><a href="#arch">六层架构</a></li>
+    <li><a href="#limits">已知限制</a></li>
+    <li><a href="#files">文件清单</a></li>
+  </ol>
+</div>
+
+<h2 id="quick">一、编译与运行</h2>
+
+<h3>手工编译（0 错误 0 警告）</h3>
+<pre><code>gcc -x c++ -std=c++11 -O0 -g -Wall -Wextra -Wpedantic -I src \
+    src/main.cpp src/core/*.cpp src/elf/*.cpp src/arch/*.cpp src/arch/x86/*.cpp \
+    src/cfg/*.cpp src/analysis/*.cpp src/output/*.cpp -lstdc++ -o elfcfg</code></pre>
+
+<h3>编译测试程序</h3>
+<pre><code>gcc -O0 -fno-pie -no-pie tests/demo.c -o demo</code></pre>
+
+<h3>生成控制流图</h3>
+<pre><code>./elfcfg demo classify &gt; classify.dot
+dot -Tpng classify.dot -o classify.png
+xdg-open classify.png</code></pre>
+
+<h3>其它子命令</h3>
+<pre><code>./elfcfg --info     demo                 查看 ELF 概览（自己解析的文件头）
+./elfcfg --sections demo                 查看节表
+./elfcfg --symbols  demo                 查看符号表 / 函数表
+./elfcfg --disasm   demo classify        查看自己的反汇编结果（不调用 objdump）
+./elfcfg --summary  demo classify        查看 CFG 统计与循环提示
+./elfcfg --text     demo loop_sum        文本形式 CFG，终端直接讲解</code></pre>
+
+<h2 id="stats">二、实测数据（6 个测试函数）</h2>
+
+<table>
+  <tr><th>函数</th><th>地址</th><th>字节</th><th>指令</th><th>基本块</th><th>边</th><th>向后跳转边</th><th>说明</th></tr>
+  <tr><td><code>simple_if</code></td><td>0x401136</td><td>28</td><td>11</td><td>4</td><td>4</td><td>0</td><td>最简单的单条件分支</td></tr>
+  <tr><td><code>nested_if</code></td><td>0x401152</td><td>65</td><td>18</td><td>7</td><td>9</td><td>0</td><td>嵌套条件</td></tr>
+  <tr><td><code>loop_sum</code></td><td>0x401193</td><td>59</td><td>19</td><td>7</td><td>8</td><td><span class="ok">2</span></td><td>for + while 两条循环</td></tr>
+  <tr><td><strong><code>classify</code></strong></td><td>0x4011cd</td><td>81</td><td>26</td><td>9</td><td>11</td><td>1</td><td>课堂主用例</td></tr>
+  <tr><td><code>switch_test</code></td><td>0x40121e</td><td>68</td><td>21</td><td>9</td><td>9</td><td>0</td><td>跳转表，见已知限制</td></tr>
+  <tr><td><code>call_test</code></td><td>0x401262</td><td>65</td><td>23</td><td>1</td><td>0</td><td>0</td><td>无分支，顺序执行到 ret</td></tr>
+</table>
+
+<div class="box">
+  <strong>交叉验证（开发期 oracle，程序本身不调用）：</strong>
+  <ul style="margin:6px 0">
+    <li>解码结果与 GNU objdump 逐条比对：<code>classify</code> 与 <code>main</code> 均为
+        <span class="ok">26/26 条指令</span>的地址、助记符、操作数完全一致</li>
+    <li>CFG 结构与旧版（objdump 版）逐边比对：<span class="ok">11 条边的连接关系与标签完全一致</span></li>
+    <li>节表输出与 <code>readelf -S</code> 逐项一致</li>
+  </ul>
+  验证脚本位于 <code>tests/verify_against_objdump.py</code>，仅由人工在开发阶段运行。
+</div>
+
+<h2 id="cfg">三、classify 的控制流图</h2>
+
+<img src="classify_native.png" alt="classify 函数的控制流图">
+<p class="cap">
+  绿色 B0 = 入口块　红色 B8 = 出口块（含 ret）　红色加粗 B7→B6 = 向后跳转边（对应 for 循环）
+</p>
+
+<table>
+  <tr><th>图形元素</th><th>含义</th></tr>
+  <tr><td>每个方框</td><td>一个基本块，框内逐行列出：<strong>指令地址 + 助记符 + 操作数</strong>（全部由本程序解码得出）</td></tr>
+  <tr><td><code>jle</code> / <code>fall</code> 成对出现</td><td>条件跳转分叉成两条路径。注意：<code>jle</code> 是"≤ 就跳走"，所以<strong>跳转边对应源码条件不成立</strong>，fall 边才对应成立</td></tr>
+  <tr><td>红色加粗箭头</td><td>向后跳转边（目标地址 ≤ 源地址）。这是<strong>演示性近似</strong>，严格意义的 CFG back edge 需要支配关系判定</td></tr>
+  <tr><td>绿色框 / 红色框</td><td>函数入口块 / 函数出口块</td></tr>
+</table>
+
+<h2 id="uml">四、UML 类图</h2>
+
+<img src="docs_native/uml_native.png" alt="UML 类图">
+<p class="cap">空心三角 = 继承　虚线箭头 = 依赖/生产　空心菱形 = 聚合　（完整 Mermaid 源码见 docs_native/UML.md）</p>
+
+<div class="box">
+  <strong>六组继承关系：</strong>
+  <table style="margin-top:10px">
+    <tr><th>抽象基类</th><th>派生类</th><th>虚函数</th><th>多态的意义</th></tr>
+    <tr><td>BinaryFile</td><td>MappedBinaryFile</td><td>openFile/closeFile/data/size</td><td>换 read() 实现时上层不变</td></tr>
+    <tr><td>InstructionDecoder</td><td>X86_64Decoder</td><td>decode()</td><td>换架构只需换派生类</td></tr>
+    <tr><td>BasicBlockBuilder</td><td>LinearBasicBlockBuilder</td><td>build() + endsBlock()</td><td>不同划分策略可替换</td></tr>
+    <tr><td>EdgeAnalyzer</td><td>X86EdgeAnalyzer</td><td>analyze() + analyzeBlock()</td><td>不同指令集出边规则可替换</td></tr>
+    <tr><td>AnalysisPass</td><td>Reachability / LoopHint / Statistics</td><td>run()</td><td>新增分析不必改主流程</td></tr>
+    <tr><td>GraphWriter</td><td>DotGraphWriter / TextWriter</td><td>write()</td><td>可扩展 JSON 等输出</td></tr>
+  </table>
+</div>
+
+<h2 id="flow">五、程序流程图</h2>
+
+<img src="docs_native/flowchart_native.png" alt="程序流程图">
+<p class="cap">虚线框内为程序外部的展示步骤（elfcfg 输出 DOT 到 stdout 后即运行结束）</p>
+
+<div class="box warn">
+  <strong>流程中的两个硬约束：</strong>
+  <ul style="margin:6px 0">
+    <li>遇到<strong>不认识的 opcode 立即停止</strong>解码并报错 —— 绝不假定它长 1 字节继续，
+        否则后续所有指令都会错位</li>
+    <li><code>dot -Tpng</code> 属于<strong>程序外部</strong>的展示步骤，不参与任何分析</li>
+  </ul>
+</div>
+
+<h2 id="arch">六、六层架构</h2>
+
+<table>
+  <tr><th>层</th><th>目录</th><th>行数</th><th>关键类</th></tr>
+  <tr><td>① 基础设施</td><td><code>src/core/</code></td><td>665</td><td>BinaryFile / MappedBinaryFile · MemoryArena · SimpleVector&lt;T&gt; · Log</td></tr>
+  <tr><td>② ELF 解析</td><td><code>src/elf/</code></td><td>1714</td><td>ElfParser · ElfHeaderView · SectionTable · StringTable · SymbolTable · FunctionTable</td></tr>
+  <tr><td>③ 指令解码</td><td><code>src/arch/</code></td><td>1627</td><td>InstructionDecoder · X86_64Decoder · X86OpcodeTable · InstructionStream</td></tr>
+  <tr><td>④ CFG</td><td><code>src/cfg/</code></td><td>818</td><td>ControlFlowGraph · BasicBlockBuilder · EdgeAnalyzer · BasicBlock · Edge</td></tr>
+  <tr><td>⑤ 分析</td><td><code>src/analysis/</code></td><td>494</td><td>AnalysisPass · ReachabilityPass · LoopHintPass · StatisticsPass</td></tr>
+  <tr><td>⑥ 输出</td><td><code>src/output/</code></td><td>353</td><td>GraphWriter · DotGraphWriter · TextWriter</td></tr>
+  <tr><td>入口</td><td><code>src/main.cpp</code></td><td>321</td><td>命令行解析与流程编排</td></tr>
+</table>
+<p><strong>合计 49 个源文件，5992 行。</strong>
+依赖方向严格单向：① ← ② ← ③ ← ④ ← ⑤/⑥，上层只通过抽象基类指针与下层交互。</p>
+
+<h2 id="limits">七、已知限制（如实记录）</h2>
+
+<table>
+  <tr><th>#</th><th>限制</th><th>现象 / 影响</th></tr>
+  <tr><td>1</td><td>解码器非完整实现</td><td>不支持三字节 opcode（0F 38 / 0F 3A）、SSE/AVX、x87 浮点、位操作指令；遇到即报错停止</td></tr>
+  <tr><td>2</td><td>间接跳转目标不可解析</td><td><code>jmp *%rax</code> 生成 EDGE_INDIRECT 边，目标块为空，可达性会漏</td></tr>
+  <tr><td>3</td><td>switch 跳转表</td><td>能识别为间接跳转，但不读表内容，各 case 的块会被误判为不可达（见 <code>--text demo switch_test</code>）</td></tr>
+  <tr><td>4</td><td>"向后跳转边"是演示性近似</td><td>判据为"目标地址 ≤ 源地址"，<strong>不是</strong>严格 back edge（严格需支配关系）；统一称 backward jump hint</td></tr>
+  <tr><td>5</td><td>依赖符号表</td><td>strip 后的二进制无法按名字定位函数，会明确报错并提示用 --symbols</td></tr>
+  <tr><td>6</td><td>其它</td><td>只支持 ELF64 小端 x86-64；只分析函数内部 CFG；不解析 .eh_frame；不处理重定位</td></tr>
+</table>
+
+<h2 id="files">八、文件清单</h2>
+
+<table>
+  <tr><th>内容</th><th>路径</th></tr>
+  <tr><td>C++ 源码（49 个文件）</td><td><code>src/</code></td></tr>
+  <tr><td>测试程序与验证脚本</td><td><code>tests/demo.c</code>、<code>tests/verify_against_objdump.py</code></td></tr>
+  <tr><td>技术文档（8 份）</td><td><code>docs_native/</code>：ARCHITECTURE / ELF / DECODER / CFG / LIMITATIONS / UML / FLOWCHART / CLASS_PRESENTATION</td></tr>
+  <tr><td>UML 类图</td><td><code>docs_native/uml_native.png</code> + <code>uml.dot</code> + Mermaid 源码在 <code>UML.md</code></td></tr>
+  <tr><td>程序流程图</td><td><code>docs_native/flowchart_native.png</code> + <code>flowchart.dot</code> + Mermaid 源码在 <code>FLOWCHART.md</code></td></tr>
+  <tr><td>CFG 的 DOT / 图片</td><td><code>classify.dot</code>、<code>classify_native.png</code></td></tr>
+  <tr><td>可执行文件</td><td><code>elfcfg</code>（工具）、<code>demo</code>（测试程序）</td></tr>
+</table>
+
+<p class="sub" style="margin-top:26px;border-top:1px solid #ddd;padding-top:10px">
+  旧版（调用 objdump 的版本）保存在上一级目录，未做改动。<br>
+  本页由 elfcfg native 版本项目生成 · 2026-09-16
+</p>
+
+</body>
+</html>
