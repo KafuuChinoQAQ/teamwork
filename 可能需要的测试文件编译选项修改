@@ -1,0 +1,2 @@
+gcc -O0 -fno-pie -no-pie -fcf-protection=none test.c -o test
+相比课堂展示文档添加了 -fcf-protection=none 关闭控制流保护相关的插桩
