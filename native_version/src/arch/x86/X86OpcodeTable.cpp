@@ -31,6 +31,16 @@ static const X86OpcodeEntry kOneByteTable[] = {
     { 0x33, 0, "xor", INST_ARITH, ENC_MODRM },
     { 0x3B, 0, "cmp", INST_CMP,   ENC_MODRM },
 
+    /* ---- 算术/逻辑：累加器 AL + imm8（04 0C 14 1C 24 2C 34 3C）---- */
+    { 0x04, 0, "add", INST_ARITH, ENC_IMM8 },
+    { 0x0C, 0, "or",  INST_ARITH, ENC_IMM8 },
+    { 0x14, 0, "adc", INST_ARITH, ENC_IMM8 },
+    { 0x1C, 0, "sbb", INST_ARITH, ENC_IMM8 },
+    { 0x24, 0, "and", INST_ARITH, ENC_IMM8 },
+    { 0x2C, 0, "sub", INST_ARITH, ENC_IMM8 },
+    { 0x34, 0, "xor", INST_ARITH, ENC_IMM8 },
+    { 0x3C, 0, "cmp", INST_CMP,   ENC_IMM8 },
+
     /* ---- 算术/逻辑：累加器 + 立即数（05 0D 15 1D 25 2D 35 3D）---- */
     { 0x05, 0, "add", INST_ARITH, ENC_IMM32 },
     { 0x0D, 0, "or",  INST_ARITH, ENC_IMM32 },
@@ -143,6 +153,10 @@ static const X86OpcodeEntry kTwoByteTable[] = {
     { 0x0B, 1, "ud2",     INST_HLT,     ENC_NONE },
     { 0x31, 1, "rdtsc",   INST_NORMAL,  ENC_NONE },
     { 0x1F, 1, "nop",     INST_NOP,     ENC_MODRM },   /* 多字节 nop */
+    /* 0F 1E：ModRM=FA 是 endbr64、FB 是 endbr32（GCC 的 -fcf-protection
+     * 插桩，Ubuntu 等发行版默认开启）。它本质是带 F3 前缀的 nop，
+     * 不改变控制流，但**必须能解码**，否则整个函数一条都解不出来。 */
+    { 0x1E, 1, "nop",     INST_NOP,     ENC_MODRM },
     { 0xA2, 1, "cpuid",   INST_NORMAL,  ENC_NONE },
     { 0xAF, 1, "imul",    INST_ARITH,   ENC_MODRM },
     { 0xB6, 1, "movzx",   INST_MOV,     ENC_MODRM },

@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>elfcfg native 版本 —— 课堂展示</title>
+<style>
+  @page { size: A4; margin: 14mm 13mm 12mm 13mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "DejaVu Sans", "Droid Sans Fallback", sans-serif;
+         font-size: 10.5pt; line-height: 1.6; color: #1a1a1a; margin: 0; }
+  h1 { font-size: 17pt; color: #2c5f8a; border-bottom: 2.5px solid #2c5f8a;
+       padding-bottom: 5px; margin: 0 0 12px; page-break-before: always;
+       page-break-after: avoid; }
+  h1.first { page-break-before: avoid; }
+  h2 { font-size: 12.5pt; color: #2c5f8a; margin: 16px 0 7px;
+       border-left: 5px solid #2c5f8a; padding-left: 9px; page-break-after: avoid; }
+  h3 { font-size: 11pt; color: #333; margin: 12px 0 5px; page-break-after: avoid; }
+  p { margin: 6px 0; }
+  ul, ol { margin: 6px 0; padding-left: 22px; }
+  li { margin: 3px 0; }
+  code { font-family: "DejaVu Sans Mono", monospace; font-size: 9.5pt;
+         background: #eef0f4; padding: 1px 4px; border-radius: 3px; color: #b03030; }
+  pre { font-family: "DejaVu Sans Mono", monospace; font-size: 8.8pt;
+        background: #f6f8fa; border: 1px solid #d8dee4; border-left: 4px solid #3b6ea5;
+        padding: 9px 12px; border-radius: 4px; line-height: 1.5;
+        white-space: pre-wrap; word-break: break-all;
+        margin: 8px 0; page-break-inside: avoid; }
+  pre code { background: none; padding: 0; color: #1a1a1a; font-size: inherit; }
+  table { border-collapse: collapse; width: 100%; margin: 9px 0;
+          font-size: 9.5pt; page-break-inside: avoid; }
+  th, td { border: 1px solid #c8d0d8; padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: #eef4ff; color: #2c5f8a; font-weight: bold; }
+  tr:nth-child(even) td { background: #fafbfc; }
+  img { max-width: 100%; display: block; margin: 8px auto;
+        border: 1px solid #ccd4dc; border-radius: 4px; }
+  .imgbox { page-break-inside: avoid; text-align: center; }
+  .cap { font-size: 9pt; color: #666; text-align: center; margin: 2px 0 10px; }
+  .titleblock { border: 2px solid #2c5f8a; border-radius: 6px; padding: 16px 20px;
+                margin-bottom: 16px; background: #f7fafd; }
+  .titleblock h1 { font-size: 18pt; border: none; margin: 0 0 6px; padding: 0; page-break-before: avoid; }
+  .titleblock .sub { font-size: 11.5pt; color: #456; margin: 0 0 10px; }
+  .titleblock .meta { font-size: 9.5pt; color: #667; }
+  .term { background: #f0f7f0; border-left: 5px solid #4a8f4a; border-radius: 0 4px 4px 0;
+          padding: 6px 11px; margin: 8px 0; font-size: 9.5pt; color: #2d5c2d;
+          page-break-inside: avoid; }
+  .term::before { content: "▶ 终端同步演示　"; font-weight: bold; }
+  .note { background: #fffdf3; border-left: 5px solid #e0a800; border-radius: 0 4px 4px 0;
+          padding: 7px 12px; margin: 9px 0; font-size: 9.5pt; page-break-inside: avoid; }
+  .key { background: #f4fbf4; border-left: 5px solid #4a8f4a; border-radius: 0 4px 4px 0;
+         padding: 7px 12px; margin: 9px 0; font-size: 9.8pt; page-break-inside: avoid; }
+  .modbox { border: 1px solid #c8d0d8; border-radius: 5px; padding: 10px 14px;
+            margin: 10px 0; page-break-inside: avoid; background: #fcfdff; }
+  .modbox h3 { margin-top: 0; color: #2c5f8a; }
+  .cls { font-family: "DejaVu Sans Mono", monospace; font-size: 9.5pt; }
+  .arrow { color: #b03030; font-weight: bold; }
+  .small { font-size: 9pt; color: #666; }
+  .big-ok { color: #2e7d32; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<div class="titleblock">
+  <h1>Linux 命令行 ELF 控制流图（CFG）绘制工具<br><span style="font-size:13pt">—— 完全自研版本（native）</span></h1>
+  <p class="sub">《软件安全原理》课堂练习　·　C++ 实现，不使用 STL 与任何第三方库</p>
+  <p class="meta">
+    <b>核心特点</b>：ELF 解析、函数定位、x86-64 机器码解码、基本块划分、CFG 构造
+    <b>全部由自身代码实现</b>，运行时不启动任何外部程序<br>
+    <b>规模</b>：49 个源文件，5992 行，6 层架构
+    <b>环境</b>：Kali GNU/Linux (x86-64)　gcc 13.2.0<br>
+    <b>编译</b>：手工 gcc 命令，0 错误 0 警告
+  </p>
+</div>
+
+<h1 class="first">一、任务要求与本方案</h1>
+
+<h2>1.1 题目要求</h2>
+<table>
+  <tr><th style="width:26%">要求项</th><th>具体内容</th></tr>
+  <tr><td>平台 / 形式</td><td>Linux 平台命令行程序</td></tr>
+  <tr><td>语言 / 限制</td><td>C++；<b>不使用 STL，不使用其他第三方库</b></td></tr>
+  <tr><td>输入</td><td>ELF 格式的二进制代码文件，<b>可指定函数</b></td></tr>
+  <tr><td>输出</td><td>Graphviz 格式的图形数据</td></tr>
+  <tr><td>必备模块</td><td>反汇编、基本块识别、基本块执行关系识别、图形输出</td></tr>
+  <tr><td>设计要求</td><td>面向对象思想，使用<b>继承</b>和<b>多态</b></td></tr>
+</table>
+
+<h2>1.2 本方案：从"借助外部工具"到"完全自研"</h2>
+<table>
+  <tr><th style="width:24%">环节</th><th style="width:38%">早期版本</th><th>本版本（native）</th></tr>
+  <tr><td>文件读取</td><td>objdump 代劳</td><td><b>open / fstat / mmap</b> 自己映射</td></tr>
+  <tr><td>ELF 解析</td><td>objdump 代劳</td><td><b>自己解析</b>文件头、节表、字符串表、符号表</td></tr>
+  <tr><td>函数定位</td><td><code>objdump --disassemble=名字</code></td><td><b>自己查符号表</b>，st_value → 文件偏移 → 机器码指针</td></tr>
+  <tr><td>指令解码</td><td>解析 objdump 的文本输出</td><td><b>自己从字节解码</b>：前缀/REX/opcode/ModRM/SIB/disp/imm</td></tr>
+  <tr><td>基本块 / CFG / DOT</td><td>自己实现</td><td>自己实现（<b>算法与结果保持一致</b>）</td></tr>
+</table>
+
+<div class="key">
+<b>验收确认</b>：无 STL 头文件　·　无 Capstone / LLVM / libelf / libbfd　·
+无 <code>popen</code> / <code>system</code> / <code>exec</code> / <code>fork</code>　·
+源码中无 objdump / readelf / nm 调用<br>
+<b>外部工具仅在开发阶段作为对照 oracle 使用</b>（见第十一节），程序运行时不依赖。
+</div>
+
+<h2>1.3 数据流总览</h2>
+<pre><code>ELF 文件
+  │ open / fstat / mmap                    ① core  BinaryFile
+  ▼
+BinaryFile（映射区 data / size）
+  │ magic / ELFCLASS64 / 小端 / EM_X86_64   ② elf   ElfHeaderView
+  ▼
+ElfHeaderView ──► SectionTable ──► StringTable
+  │                                         ② elf   SymbolTable
+  ▼
+SymbolTable ──► FunctionTable ──► FunctionInfo（名字/地址/大小/机器码指针）
+  │                                         ③ arch  X86_64Decoder
+  ▼
+Instruction 双向链表（前缀→REX→opcode→ModRM→SIB→disp→imm）
+  │ Leader 法                               ④ cfg   BasicBlockBuilder
+  ▼
+BasicBlock 链表 ──► Edge 链表                 ④ cfg   EdgeAnalyzer
+  ▼
+ControlFlowGraph
+  │ 可达性 / 循环提示 / 统计                  ⑤ analysis
+  ▼
+GraphWriter ──► DOT 文本 ──（程序外部）dot -Tpng ──► 图片   ⑥ output</code></pre>
+
+<div class="term"><code>cd /home/kali/elfcfg && ls</code>，让老师看到 src / tests / docs_native 三个目录</div>
+
+<h1>二、待分析的测试程序 tests/demo.c</h1>
+
+<p>为便于课堂按难度选择，测试程序包含 6 个函数，覆盖从"无分支"到"多分支+循环"的各种形态：</p>
+
+<table>
+  <tr><th style="width:16%">函数</th><th>结构特征</th><th style="width:30%">用途</th></tr>
+  <tr><td class="cls">simple_if</td><td>单条件分支</td><td>CFG 最简单的示例</td></tr>
+  <tr><td class="cls">nested_if</td><td>嵌套条件</td><td>多层分叉与汇合</td></tr>
+  <tr><td class="cls">loop_sum</td><td>for + while</td><td>两条循环回边</td></tr>
+  <tr><td class="cls"><b>classify</b></td><td><b>if / else if / else + for</b></td><td><b>课堂主用例</b></td></tr>
+  <tr><td class="cls">switch_test</td><td>switch（GCC 生成跳转表）</td><td>演示已知限制</td></tr>
+  <tr><td class="cls">call_test</td><td>三次函数调用，无分支</td><td>观察 call 的处理</td></tr>
+</table>
+
+<pre><code>int classify(int x)
+{
+    int sum = 0;
+    int i;
+
+    if (x &gt; 100) {              /* 分支 1 */
+        sum = 100;
+    } else if (x &gt; 0) {         /* 分支 2 */
+        sum = x;
+    } else {                    /* 分支 3 */
+        sum = -x;
+    }
+
+    for (i = 0; i &lt; 3; i++) {   /* for 循环：形成向后跳转边 */
+        sum = sum + i;
+    }
+
+    return sum;
+}</code></pre>
+
+<div class="term"><code>gcc -O0 -fno-pie -no-pie tests/demo.c -o demo</code>　然后 <code>./demo 7</code> 看运行结果</div>
+
+<div class="note">
+<b>编译选项</b>：<code>-O0</code> 关闭大部分优化，使控制流结构更容易与源码对应；
+<code>-fno-pie -no-pie</code> 关闭 PIE，使地址在当前编译环境中保持固定，便于重复演示。
+</div>
+
+<h1>三、六层架构</h1>
+
+<table>
+  <tr><th style="width:14%">层</th><th style="width:20%">目录</th><th style="width:10%">行数</th><th>关键类</th></tr>
+  <tr><td>① 基础设施</td><td class="cls">src/core/</td><td>665</td><td>BinaryFile / MappedBinaryFile · MemoryArena · SimpleVector&lt;T&gt; · Log</td></tr>
+  <tr><td>② ELF 解析</td><td class="cls">src/elf/</td><td>1714</td><td>ElfParser · ElfHeaderView · SectionTable · StringTable · SymbolTable · FunctionTable</td></tr>
+  <tr><td>③ 指令解码</td><td class="cls">src/arch/</td><td>1627</td><td>InstructionDecoder · X86_64Decoder · X86OpcodeTable · InstructionStream</td></tr>
+  <tr><td>④ CFG</td><td class="cls">src/cfg/</td><td>818</td><td>ControlFlowGraph · BasicBlockBuilder · EdgeAnalyzer · BasicBlock · Edge</td></tr>
+  <tr><td>⑤ 分析</td><td class="cls">src/analysis/</td><td>494</td><td>AnalysisPass · ReachabilityPass · LoopHintPass · StatisticsPass</td></tr>
+  <tr><td>⑥ 输出</td><td class="cls">src/output/</td><td>353</td><td>GraphWriter · DotGraphWriter · TextWriter</td></tr>
+  <tr><td>入口</td><td class="cls">src/main.cpp</td><td>321</td><td>命令行解析与流程编排</td></tr>
+</table>
+
+<p><b>合计 49 个源文件、5992 行。</b>依赖方向严格单向：① ← ② ← ③ ← ④ ← ⑤/⑥。
+上层只通过<b>抽象基类指针</b>与下层交互，因此每一层都可以单独替换或测试。</p>
+
+<h1>四、ELF 解析模块（自己实现）</h1>
+
+<div class="modbox">
+<h3>只使用 Linux 系统头文件 <span class="cls">&lt;elf.h&gt;</span> 的结构体定义</h3>
+<p><code>Elf64_Ehdr</code> / <code>Elf64_Shdr</code> / <code>Elf64_Sym</code> 等只是 ELF 格式的
+<b>数据布局描述</b>，不是解析库。解析逻辑全部自己写。</p>
+</div>
+
+<h3>4.1 文件访问：open → fstat → mmap</h3>
+<pre><code>int fd = open(path, O_RDONLY);                                    /* 打开        */
+fstat(fd, &amp;st);                                                   /* 取大小      */
+void *m = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);  /* 只读映射    */
+... 分析全程只在映射区上进行 ...
+munmap(m, size);  close(fd);                                      /* 析构时释放  */</code></pre>
+<p class="small">选择 mmap 的原因：ELF 分析是"拿着偏移直接取字节"的场景，
+映射后 <code>data() + offset</code> 就是指针，零拷贝；且 <code>data()</code> 与
+<code>size()</code> 构成完整可访问区间，所有边界检查都基于这两个值。</p>
+
+<h3>4.2 文件头六项校验</h3>
+<table>
+  <tr><th style="width:38%">检查项</th><th>失败时的报错示例</th></tr>
+  <tr><td>长度 ≥ <code>sizeof(Elf64_Ehdr)</code></td><td>文件过小：40 字节，不足以容纳 ELF64 文件头（64 字节）</td></tr>
+  <tr><td>magic = <code>7f 45 4c 46</code></td><td>不是 ELF 文件：magic 为 50 4b 03 04，应为 7f 45 4c 46</td></tr>
+  <tr><td><code>EI_CLASS == ELFCLASS64</code></td><td>不是 ELF64（EI_CLASS = 1）</td></tr>
+  <tr><td><code>EI_DATA == ELFDATA2LSB</code></td><td>不是小端 ELF（EI_DATA = 2）</td></tr>
+  <tr><td><code>EI_VERSION == EV_CURRENT</code></td><td>不支持的 ELF 版本</td></tr>
+  <tr><td><code>e_machine == EM_X86_64</code></td><td>不是 x86-64 目标文件（e_machine = 183）</td></tr>
+</table>
+
+<h3>4.3 函数定位：从符号到机器码</h3>
+<pre><code>st_value（虚拟地址，来自符号表）
+   │  找到 st_shndx 对应的节：secAddr = sh_addr, secOff = sh_offset
+   ▼
+offsetInSection = st_value - secAddr           ← 节内偏移
+fileOffset      = secOff + offsetInSection     ← 文件偏移
+code            = fileData + offsetInSection   ← 机器码首字节指针</code></pre>
+
+<p><b>以 classify 为例（实测）</b>：<code>st_value = 0x4011cd</code>，
+<code>.text</code> 节 <code>sh_addr = 0x401050</code>、<code>sh_offset = 0x1050</code>，
+故 <code>fileOffset = 0x1050 + 0x17d = 0x11cd</code>，
+机器码内容为 <code>55 48 89 e5 …</code>（即 <code>push %rbp; mov %rsp,%rbp</code>），大小 81 字节。</p>
+
+<h3>4.4 四类边界情况都有处理</h3>
+<table>
+  <tr><th style="width:34%">情况</th><th>处理方式</th></tr>
+  <tr><td>符号未定义 / 特殊索引</td><td><code>SHN_UNDEF</code>、<code>SHN_ABS</code> 等直接视为"没有机器码"</td></tr>
+  <tr><td><code>st_size == 0</code></td><td>GCC 的 <code>_init</code> 等常见；用"同节内下一个函数符号"或"节末尾"兜底推算</td></tr>
+  <tr><td><code>st_size</code> 超出节范围</td><td>截断到节内剩余空间并告警</td></tr>
+  <tr><td>机器码范围超出文件</td><td>最后防线：拒绝并置 <code>code = NULL</code></td></tr>
+</table>
+
+<div class="term"><code>./elfcfg --info demo</code>　<code>./elfcfg --sections demo</code>　<code>./elfcfg --symbols demo</code></div>
+
+<h1>五、x86-64 解码器（本次升级的核心）</h1>
+
+<div class="modbox">
+<h3>架构相关与架构无关的分界线</h3>
+<p><code>InstructionDecoder</code> 是抽象基类，<code>X86_64Decoder</code> 是派生类。
+上层（<code>InstructionStream</code>、CFG 各模块）只认识基类指针，完全不知道底下是什么指令集。
+<b>更换目标架构只需新增一个派生类，上层代码一行不改。</b></p>
+</div>
+
+<h3>5.1 指令格式与解码七步</h3>
+<pre><code>┌───────────────┬─────┬────────────┬───────┬─────┬───────┬──────┐
+│ Legacy Prefix │ REX │  Opcode    │ ModRM │ SIB │ Disp  │ Imm  │
+│  (0 或多个)    │(0/1)│ (1/2/3 字节)│ (0/1) │(0/1)│(0/1/4)│(0..8)│
+└───────────────┴─────┴────────────┴───────┴─────┴───────┴──────┘</code></pre>
+<ol>
+  <li><b>Legacy 前缀</b>：LOCK <code>F0</code>、REP/REPNE <code>F2/F3</code>、
+      段前缀 <code>2E 36 3E 26 64 65</code>、<code>66</code>、<code>67</code>（可重复、顺序任意）</li>
+  <li><b>REX</b>：<code>40</code>–<code>4F</code>，解析 W/R/X/B 四个扩展位</li>
+  <li><b>Opcode</b>：单字节，或 <code>0F xx</code> 两字节；<code>0F 38 / 0F 3A</code> 三字节明确报错</li>
+  <li><b>ModRM</b>：拆出 mod / reg / r/m</li>
+  <li><b>SIB</b>：仅当 <code>mod≠3 且 r/m==4</code> 时存在，拆出 scale / index / base</li>
+  <li><b>位移</b>：由 mod 与 r/m 共同决定长度（见下表）</li>
+  <li><b>立即数</b>：由 opcode 与 REX.W / <code>66</code> 共同决定长度</li>
+</ol>
+
+<h3>5.2 长度是"推导"出来的，不是猜的</h3>
+<table>
+  <tr><th style="width:32%">条件</th><th>位移长度</th></tr>
+  <tr><td><code>mod == 0</code> 且 <code>r/m == 5</code></td><td>disp32（RIP 相对寻址）</td></tr>
+  <tr><td><code>mod == 0</code>、有 SIB 且 <code>base == 5</code></td><td>disp32（无基址）</td></tr>
+  <tr><td><code>mod == 1</code></td><td>disp8</td></tr>
+  <tr><td><code>mod == 2</code></td><td>disp32</td></tr>
+  <tr><td><code>mod == 3</code></td><td>无位移（寄存器直接寻址）</td></tr>
+</table>
+<p class="small">两个易错点：<b>SIB.index == 4</b> 表示"没有变址"（不是 rsp）；
+<b>SIB.base == 5 且 mod == 0</b> 表示"没有基址"（不是 rbp）。
+<code>0x83</code> 与 <code>0x81</code> 都是 Group1，但前者用 imm8 并<b>符号扩展</b>。</p>
+
+<h3>5.3 关键约束：绝不猜测未知指令的长度</h3>
+<div class="note">
+x86 是变长指令集，<b>长度算错一条，后面全部错位</b>。
+因此遇到不支持的 opcode 时，解码器立即返回失败，
+<code>InstructionStream</code> <b>停止</b>该函数的解码并报出具体地址与 opcode 字节：
+<pre style="margin:6px 0 0"><code>[elfcfg] ERROR: 解码停止于 0x4012ab（函数内偏移 53）：不支持的 opcode 0F 28</code></pre>
+已解出的部分仍然保留，可用于分析。<b>绝不会把未知指令当作 1 字节继续解码。</b>
+</div>
+
+<h3>5.4 操作数顺序：本项目踩过的坑</h3>
+<p><b>Intel 语法与 AT&amp;T 语法的操作数顺序是相反的</b>，本项目输出 AT&amp;T 风格（带 <code>%</code> 与 <code>$</code>），因此需要交换：</p>
+<table>
+  <tr><th>机器码</th><th>Intel 语法</th><th>本项目输出（AT&amp;T）</th></tr>
+  <tr><td class="cls">48 89 e5</td><td class="cls">mov rbp, rsp</td><td class="cls">mov %rsp,%rbp</td></tr>
+  <tr><td class="cls">8b 45 ec</td><td class="cls">mov eax, [rbp-0x14]</td><td class="cls">mov -0x14(%rbp),%eax</td></tr>
+  <tr><td class="cls">89 45 fc</td><td class="cls">mov [rbp-0x4], eax</td><td class="cls">mov %eax,-0x4(%rbp)</td></tr>
+</table>
+<p class="small">最初实现把顺序写反了，靠与 objdump 逐条比对才发现 —— 这也是保留交叉验证脚本的原因。</p>
+
+<h3>5.5 支持的控制流指令（CFG 依赖，全部支持）</h3>
+<table>
+  <tr><th style="width:30%">指令</th><th>编码</th></tr>
+  <tr><td>短条件跳转 Jcc（16 种条件）</td><td class="cls">70–7F rel8</td></tr>
+  <tr><td>近条件跳转 Jcc（16 种条件）</td><td class="cls">0F 80–0F 8F rel32</td></tr>
+  <tr><td>无条件跳转 JMP</td><td class="cls">EB rel8 / E9 rel32</td></tr>
+  <tr><td>函数调用 CALL</td><td class="cls">E8 rel32</td></tr>
+  <tr><td>返回 RET</td><td class="cls">C3 / C2 imm16</td></tr>
+  <tr><td>循环 LOOP / LOOPE / LOOPNE / JRCXZ</td><td class="cls">E2 / E1 / E0 / E3 rel8</td></tr>
+  <tr><td>间接 CALL / 间接 JMP</td><td class="cls">FF /2 · FF /4（目标标记为不可知）</td></tr>
+</table>
+<p class="small">数据传送与运算还支持：mov / lea / movzx / movsx / movsxd / push / pop /
+add / or / adc / sbb / and / sub / xor / cmp / test / not / neg / mul / imul / div / idiv /
+inc / dec / 移位 / xchg / cmpxchg / xadd / nop / leave / cwde / cdq / cmovcc / setcc /
+bswap / syscall / cpuid / rdtsc 等。</p>
+
+<div class="term"><code>./elfcfg --disasm demo classify</code>　—— 这是我们自己解码的结果，不是 objdump</div>
+
+<h1>六、基本块识别模块</h1>
+
+<div class="modbox">
+<h3>BasicBlockBuilder（抽象基类）　<span class="arrow">──▶</span>　LinearBasicBlockBuilder（派生类）</h3>
+<p><b>算法</b>：Leader（入口）法，与早期版本一致。</p>
+</div>
+
+<table>
+  <tr><th style="width:12%">规则</th><th>内容</th></tr>
+  <tr><td>规则 1</td><td><b>函数的第一条指令</b>是一个基本块的入口</td></tr>
+  <tr><td>规则 2</td><td><b>跳转指令的目标地址</b>是一个基本块的入口</td></tr>
+  <tr><td>规则 3</td><td><b>跳转指令之后的下一条指令</b>也是一个基本块的入口</td></tr>
+  <tr><td>补充</td><td><code>ret</code> / <code>hlt</code> 之后也另起一块，避免把不可达代码并进上一块</td></tr>
+</table>
+
+<h3>多态在这里的作用</h3>
+<pre><code>/* 基类：只有跳转才结束基本块 */
+int BasicBlockBuilder::endsBlock(const Instruction *ins) const {
+    return (ins-&gt;type == INST_JMP || ins-&gt;type == INST_JCC ||
+            ins-&gt;type == INST_LOOP) ? 1 : 0;
+}
+/* 派生类：x86 上 ret / hlt 也结束基本块 —— 划分结果因此不同 */
+int LinearBasicBlockBuilder::endsBlock(const Instruction *ins) const {
+    if (BasicBlockBuilder::endsBlock(ins)) return 1;
+    return (ins-&gt;type == INST_RET || ins-&gt;type == INST_HLT) ? 1 : 0;
+}</code></pre>
+
+<div class="key">本例中：<b>26 条指令 → 9 个基本块</b>（B0 ~ B8）</div>
+
+<h1>七、基本块执行关系识别模块</h1>
+
+<div class="modbox">
+<h3>EdgeAnalyzer（抽象基类）　<span class="arrow">──▶</span>　X86EdgeAnalyzer（派生类）</h3>
+<p><b>核心观察</b>：一个基本块的<b>全部出边，只由它的最后一条指令决定</b>。</p>
+</div>
+
+<table>
+  <tr><th style="width:28%">块尾指令</th><th style="width:14%">出边</th><th>EdgeType 与目标</th></tr>
+  <tr><td>条件跳转 Jcc / LOOP</td><td><b>2 条</b></td><td><code>EDGE_BRANCH_TRUE</code>（跳转目标）+ <code>EDGE_BRANCH_FALSE</code>（顺序下一块）</td></tr>
+  <tr><td>无条件跳转 JMP（直接）</td><td><b>1 条</b></td><td><code>EDGE_UNCONDITIONAL</code>（不再顺序执行）</td></tr>
+  <tr><td>无条件跳转 JMP（间接）</td><td><b>1 条</b></td><td><code>EDGE_INDIRECT</code>（目标不可静态确定，<code>to = NULL</code>）</td></tr>
+  <tr><td>RET / HLT</td><td><b>0 条</b></td><td>函数出口，控制流终止</td></tr>
+  <tr><td>块尾是 CALL</td><td>1 条</td><td><code>EDGE_CALL</code>（返回后继续的下一块）</td></tr>
+  <tr><td>其它（含块内 call）</td><td>1 条</td><td><code>EDGE_FALLTHROUGH</code></td></tr>
+</table>
+
+<div class="note">
+<b>关于图中的红色加粗边</b>：判定方式是"<b>目标块地址 ≤ 源块地址</b>"，说明控制流往回跳。<br>
+需要说明的是，<b>严格意义的 CFG back edge 需要用支配关系判定</b>（目标块支配源块），
+本实现未构造支配树，因此这是<b>向后跳转边的演示性近似</b>，
+代码与文档中统一称为 <b>backward jump hint</b>。
+在 <code>classify</code> 中，这条 <b>B7 → B6 确实对应源码的 for 循环</b>。
+</div>
+
+<div class="key">本例中：<b>9 个基本块 → 11 条基本块执行关系</b>（其中 1 条为向后跳转边）</div>
+
+<h1>八、CFG 与分析 Pass</h1>
+
+<h3>8.1 ControlFlowGraph —— CFG 层的中心对象</h3>
+<pre><code>class ControlFlowGraph {
+    BasicBlock *addBlock(uint64_t startAddress, Instruction *first, Instruction *last);
+    Edge       *addEdge(BasicBlock *from, BasicBlock *to, EdgeType type,
+                        uint64_t targetAddress, bool targetResolved, const char *label);
+    BasicBlock *findBlockByAddress(uint64_t address) const;   /* 入口地址精确匹配 */
+    BasicBlock *blockContaining(uint64_t address) const;      /* 地址落在区间内   */
+    size_t      blockCount() / edgeCount() / instructionCount();
+    ...
+};</code></pre>
+<p class="small">块与边<b>全部由 MemoryArena 分配</b>（64 KiB 分块、块内线性切分、分配即清零），
+程序退出时一次性归还 —— 不存在"漏 free 某条链表"的问题，也没有几万次 malloc 的开销。</p>
+
+<h3>8.2 分析 Pass：新增分析不必改主流程</h3>
+<pre><code>AnalysisPass *passes[3];              /* 基类指针数组统一驱动 —— 运行时多态 */
+passes[0] = &amp;reachability;            /* 可达性     */
+passes[1] = &amp;loopHint;                /* 循环提示   */
+passes[2] = &amp;statistics;              /* 统计       */
+for (int i = 0; i &lt; 3; ++i) passes[i]-&gt;run(&amp;cfg);</code></pre>
+
+<table>
+  <tr><th style="width:24%">Pass</th><th>作用</th><th style="width:26%">输出</th></tr>
+  <tr><td class="cls">ReachabilityPass</td><td>从入口块 BFS，标记可达基本块</td><td><code>BasicBlock::reachable</code></td></tr>
+  <tr><td class="cls">LoopHintPass</td><td>识别向后跳转边（演示性近似）</td><td><code>BasicBlock::loopHeader</code></td></tr>
+  <tr><td class="cls">StatisticsPass</td><td>指令/块/边/分支/call/ret/间接跳转统计</td><td><code>StatisticsPass::Stats</code></td></tr>
+</table>
+
+<h3>8.3 为后续实验预留的接口（骨架已就位）</h3>
+<pre><code>FunctionAnalysis ──┬── StackAnalysis          栈帧布局与栈操作分析
+                   ├── DangerousCallAnalysis  危险函数调用识别
+                   └── MemoryAccessAnalysis   内存读写访问点提取
+
+DataFlowPass ──────┬── TaintAnalysis           污点传播分析
+                   └──（前向/后向数据流框架）</code></pre>
+<p class="small">目前是抽象接口，尚未实现具体算法。目的是让后续实验可以"新增一个派生类"即可接入，
+而不必推翻现有结构。</p>
+
+<h1>九、输出层</h1>
+
+<div class="modbox">
+<h3>GraphWriter（抽象基类）　<span class="arrow">──▶</span>　DotGraphWriter / TextWriter</h3>
+<p>输出层只依赖 <code>ControlFlowGraph</code>，不关心它是怎么来的。
+同一个 CFG 既能输出成 Graphviz DOT（交给外部 dot 渲染），也能输出成人类可读的文本。</p>
+</div>
+
+<ul>
+  <li><b>节点</b>：每个基本块一个方框，框内<b>逐行列出该块的每条指令</b>（地址 + 助记符 + 操作数）</li>
+  <li><b>边</b>：每条执行关系一个箭头，标签为触发该分支的指令（<code>jle</code> / <code>jmp</code> / <code>fall</code>）</li>
+  <li><b>配色</b>：入口块绿色、以 <code>ret</code> 结尾的出口块红色、向后跳转边红色加粗、不可达块灰色虚线框</li>
+  <li><b>间接跳转</b>：画成虚线的悬挂边，明确表示"目标不可静态确定"</li>
+</ul>
+
+<div class="note">
+<b>程序不依赖 Graphviz 库</b>：elfcfg 把 DOT 写到 stdout 后即运行结束；
+<code>dot -Tpng</code> 属于<b>程序外部</b>的展示步骤，不参与任何分析。
+</div>
+
+<div class="term"><code>./elfcfg demo classify &gt; classify.dot</code>　然后　<code>dot -Tpng classify.dot -o classify.png</code></div>
+
+<h1>十、面向对象设计：继承与多态</h1>
+
+<h2>10.1 六组继承体系</h2>
+<table>
+  <tr><th style="width:22%">抽象基类</th><th style="width:28%">派生类</th><th style="width:24%">纯虚 / 虚函数</th><th>多态的意义</th></tr>
+  <tr><td class="cls">BinaryFile</td><td class="cls">MappedBinaryFile</td><td class="cls">openFile / data / size</td><td>换 read() 实现时上层不变</td></tr>
+  <tr><td class="cls">InstructionDecoder</td><td class="cls">X86_64Decoder</td><td class="cls">decode()</td><td>换架构只需换派生类</td></tr>
+  <tr><td class="cls">BasicBlockBuilder</td><td class="cls">LinearBasicBlockBuilder</td><td class="cls">build() + endsBlock()</td><td>不同划分策略可替换</td></tr>
+  <tr><td class="cls">EdgeAnalyzer</td><td class="cls">X86EdgeAnalyzer</td><td class="cls">analyze() + analyzeBlock()</td><td>不同指令集出边规则可替换</td></tr>
+  <tr><td class="cls">AnalysisPass</td><td class="cls">Reachability / LoopHint / Statistics</td><td class="cls">run()</td><td>新增分析不必改主流程</td></tr>
+  <tr><td class="cls">GraphWriter</td><td class="cls">DotGraphWriter / TextWriter</td><td class="cls">write()</td><td>可扩展 JSON 等输出格式</td></tr>
+</table>
+
+<h2>10.2 main 中的实际调用</h2>
+<pre><code>BinaryFile         *file    = new MappedBinaryFile();      /* 由 ElfParser 内部持有 */
+InstructionDecoder *decoder = new X86_64Decoder();
+BasicBlockBuilder  *builder = new LinearBasicBlockBuilder();
+EdgeAnalyzer       *analyzer= new X86EdgeAnalyzer();
+GraphWriter        *writer  = new DotGraphWriter();
+
+AnalysisPass *passes[3];                                   /* 基类指针数组统一驱动 */
+passes[0] = &amp;reachability;
+passes[1] = &amp;loopHint;
+passes[2] = &amp;statistics;</code></pre>
+
+<div class="key">
+<b>多态不是形式上的</b>：<br>
+① <code>InstructionStream</code> 只认识 <code>InstructionDecoder*</code>，换架构只需换派生类；<br>
+② <code>endsBlock()</code> 被派生类重写后，<code>ret</code> 也成了基本块的结束条件，<b>划分结果因此不同</b>；<br>
+③ <code>analyzeBlock()</code> 基类只连顺序边，派生类加入 x86 跳转语义；<br>
+④ main 遍历 <code>AnalysisPass*</code> 数组，新增分析 pass 不必改主流程；<br>
+⑤ 所有基类都声明了<b>虚析构函数</b>，保证 <code>delete 基类指针</code> 时资源正确释放。
+</div>
+
+<h1>十一、编译与运行结果</h1>
+
+<h2>11.1 手工编译命令</h2>
+<pre><code>gcc -x c++ -std=c++11 -O0 -g -Wall -Wextra -Wpedantic -I src \
+    src/main.cpp src/core/*.cpp src/elf/*.cpp src/arch/*.cpp src/arch/x86/*.cpp \
+    src/cfg/*.cpp src/analysis/*.cpp src/output/*.cpp -lstdc++ -o elfcfg</code></pre>
+<table>
+  <tr><th style="width:26%">选项</th><th>说明</th></tr>
+  <tr><td class="cls">-x c++ -std=c++11</td><td>用 gcc 手工按 C++11 编译</td></tr>
+  <tr><td class="cls">-Wall -Wextra -Wpedantic</td><td>打开全部警告；本程序编译结果 <b>0 错误 0 警告</b></td></tr>
+  <tr><td class="cls">-O0 -g</td><td>保留调试信息，便于后续 gdb 实验；不 strip</td></tr>
+  <tr><td class="cls">-lstdc++</td><td>手工链接 C++ 标准库（<b>未使用任何 STL 容器</b>）</td></tr>
+</table>
+
+<div class="term"><code>gcc -x c++ -std=c++11 -O0 -g -Wall -Wextra -Wpedantic -I src src/main.cpp src/core/*.cpp src/elf/*.cpp src/arch/*.cpp src/arch/x86/*.cpp src/cfg/*.cpp src/analysis/*.cpp src/output/*.cpp -lstdc++ -o elfcfg</code></div>
+
+<h2>11.2 六个测试函数的实测数据</h2>
+<table>
+  <tr><th>函数</th><th>地址</th><th>字节</th><th>指令</th><th>基本块</th><th>边</th><th>向后跳转边</th><th>说明</th></tr>
+  <tr><td class="cls">simple_if</td><td class="cls">0x401136</td><td>28</td><td>11</td><td>4</td><td>4</td><td>0</td><td>最简单的条件分支</td></tr>
+  <tr><td class="cls">nested_if</td><td class="cls">0x401152</td><td>65</td><td>18</td><td>7</td><td>9</td><td>0</td><td>嵌套条件</td></tr>
+  <tr><td class="cls">loop_sum</td><td class="cls">0x401193</td><td>59</td><td>19</td><td>7</td><td>8</td><td><b>2</b></td><td>for + while 两条循环</td></tr>
+  <tr><td class="cls"><b>classify</b></td><td class="cls">0x4011cd</td><td>81</td><td><b>26</b></td><td><b>9</b></td><td><b>11</b></td><td><b>1</b></td><td><b>课堂主用例</b></td></tr>
+  <tr><td class="cls">switch_test</td><td class="cls">0x40121e</td><td>68</td><td>21</td><td>9</td><td>9</td><td>0</td><td>跳转表，见已知限制</td></tr>
+  <tr><td class="cls">call_test</td><td class="cls">0x401262</td><td>65</td><td>23</td><td>1</td><td>0</td><td>0</td><td>无分支，顺序执行到 ret</td></tr>
+</table>
+
+<div class="term"><code>./elfcfg --summary demo classify</code>　—— 统计、循环提示、基本块列表一次看清</div>
+
+<h2>11.3 控制流图结果</h2>
+
+<div class="imgbox">
+  <img src="../classify_native.png" style="max-height:160mm" alt="classify 函数的控制流图">
+</div>
+<p class="cap">图 1　classify 函数的控制流图（绿色 B0 = 入口，红色 B8 = 出口，红色加粗 B7→B6 = 向后跳转边）</p>
+
+<h2>11.4 源码 ↔ 解码结果 ↔ CFG 三方对应</h2>
+<table>
+  <tr><th style="width:30%">源码语句</th><th style="width:24%">基本块（地址区间）</th><th>CFG 中的表现</th></tr>
+  <tr><td>序言、<code>sum=0</code>、<code>if (x&gt;100)</code></td><td>B0　0x4011cd – 0x4011e1</td><td>块尾 <code>jle</code>，产生两条出边</td></tr>
+  <tr><td><code>sum = 100;</code></td><td>B1　0x4011e1 – 0x4011ea</td><td>块尾 <code>jmp</code>，无 fall 边</td></tr>
+  <tr><td><code>else if (x &gt; 0)</code></td><td>B2　0x4011ea – 0x4011f0</td><td>块尾 <code>jle</code>，两条出边</td></tr>
+  <tr><td><code>sum = x;</code></td><td>B3　0x4011f0 – 0x4011f8</td><td>块尾 <code>jmp</code></td></tr>
+  <tr><td><code>sum = -x;</code></td><td>B4　0x4011f8 – 0x401200</td><td>顺序落入 B5</td></tr>
+  <tr><td>分支汇合、<code>for</code> 初始化</td><td>B5　0x401200 – 0x401209</td><td>块尾 <code>jmp</code></td></tr>
+  <tr><td>循环体 <code>sum += i; i++</code></td><td>B6　0x401209 – 0x401213</td><td>循环体</td></tr>
+  <tr><td>循环条件 <code>i &lt; 3</code></td><td>B7　0x401213 – 0x401219</td><td>块尾 <code>jle</code>，<b>向后跳转边来源</b></td></tr>
+  <tr><td><code>return sum;</code></td><td>B8　0x401219 – 0x40121e</td><td>块尾 <code>ret</code>，无出边</td></tr>
+</table>
+
+<div class="note">
+<b>读图提醒</b>：汇编中的 <code>jle</code> 含义是"<b>小于等于就跳走</b>"，因此对条件跳转而言，
+<b>跳转边对应的是源码条件"不成立"</b>，<b>fall 边才对应源码条件"成立"</b> —— 两者方向相反。
+</div>
+
+<h2>11.5 交叉验证（开发期 oracle，程序不调用）</h2>
+<table>
+  <tr><th style="width:38%">验证方式</th><th>结果</th></tr>
+  <tr><td>解码结果 vs GNU objdump（逐条比对）</td><td><span class="big-ok">classify 26/26 条、main 26/26 条 —— 地址、助记符、操作数全部一致</span></td></tr>
+  <tr><td>CFG 结构 vs 早期 objdump 版本（逐边比对）</td><td><span class="big-ok">11 条边的连接关系与标签完全一致</span></td></tr>
+  <tr><td>节表 vs <code>readelf -S</code></td><td><span class="big-ok">逐项一致</span>（如 .interp 地址 0x400318、偏移 0x318、大小 28 字节）</td></tr>
+</table>
+<p class="small">验证脚本位于 <code>tests/verify_against_objdump.py</code>，仅由人工在开发/验收阶段运行。
+这是"用外部工具做 oracle"的用法，<b>程序源码中不存在任何对外部工具的调用</b>。</p>
+
+<h1>十二、UML 类图</h1>
+
+<div class="imgbox">
+  <img src="uml_native.png" style="max-height:150mm" alt="UML 类图">
+</div>
+<p class="cap">图 2　UML 类图（空心三角 = 继承；虚线箭头 = 依赖/生产；空心菱形 = 聚合）</p>
+
+<p>图中可见六组继承关系，以及六层之间的依赖方向：
+① core ← ② elf ← ③ arch ← ④ cfg ← ⑤ analysis / ⑥ output。
+三个数据结构 <code>Instruction</code>、<code>BasicBlock</code>、<code>Edge</code>
+被各层共用，构成贯穿全程的数据流。</p>
+
+<h1>十三、程序流程图</h1>
+
+<div class="imgbox">
+  <img src="flowchart_native.png" style="max-height:225mm" alt="程序流程图">
+</div>
+<p class="cap">图 3　程序流程图（虚线框内为程序外部的展示步骤）</p>
+
+<div class="note">
+流程中的两个硬约束：<br>
+① 遇到<b>不认识的 opcode 立即停止</b>解码并报错 —— 绝不假定它长 1 字节继续，否则后续全部错位；<br>
+② <code>dot -Tpng</code> 属于<b>程序外部</b>的展示步骤，elfcfg 输出 DOT 到 stdout 后即运行结束。
+</div>
+
+<h1>十四、已知限制（如实记录）</h1>
+
+<table>
+  <tr><th style="width:6%">#</th><th style="width:26%">限制</th><th>现象 / 影响</th></tr>
+  <tr><td>1</td><td>解码器非完整实现</td><td>不支持三字节 opcode（<code>0F 38</code> / <code>0F 3A</code>）、SSE/AVX、x87 浮点、位操作指令；遇到即报错停止</td></tr>
+  <tr><td>2</td><td>间接跳转目标不可解析</td><td><code>jmp *%rax</code> 生成 <code>EDGE_INDIRECT</code> 边，目标块为空，可达性分析会漏掉经由该边到达的块</td></tr>
+  <tr><td>3</td><td>switch 跳转表</td><td>能识别为间接跳转，但不读跳转表内容，各 case 对应的块会被误判为不可达（见 <code>--text demo switch_test</code>）</td></tr>
+  <tr><td>4</td><td>"向后跳转边"是演示性近似</td><td>判据为"目标地址 ≤ 源地址"，<b>不是</b>严格 back edge（严格需支配关系）；统一称 backward jump hint</td></tr>
+  <tr><td>5</td><td>依赖符号表</td><td>strip 后的二进制无法按名字定位函数，会明确报错并提示用 <code>--symbols</code> 查看可用函数</td></tr>
+  <tr><td>6</td><td>其它</td><td>只支持 ELF64 小端 x86-64；只分析函数内部 CFG；不解析 <code>.eh_frame</code>；不处理重定位</td></tr>
+</table>
+
+<h2>14.1 后续可扩展的五个方向</h2>
+<table>
+  <tr><th style="width:6%">#</th><th style="width:26%">实验</th><th>接入点</th></tr>
+  <tr><td>1</td><td>支配树与真实回边</td><td><code>analysis/LoopHintPass</code> 的严格版本，实现支配树后替换地址比较判据</td></tr>
+  <tr><td>2</td><td>栈帧与栈溢出分析</td><td><code>analysis/StackAnalysis</code>（骨架已声明）；<code>Instruction::fields</code> 保留了 ModRM/SIB/disp</td></tr>
+  <tr><td>3</td><td>危险函数调用识别</td><td><code>analysis/DangerousCallAnalysis</code>；需让 <code>call rel32</code> 的目标可反查符号</td></tr>
+  <tr><td>4</td><td>污点 / 数据流分析</td><td><code>analysis/DataFlowPass</code> + <code>TaintAnalysis</code>，前向/后向框架与 <code>solve()</code> 接口已定义</td></tr>
+  <tr><td>5</td><td>跳转表还原</td><td>扩展 <code>X86EdgeAnalyzer</code> 处理 <code>FF /4</code>，读只读节并校验表项合法性</td></tr>
+</table>
+
+<h2>14.2 现实意义</h2>
+<p>控制流图是软件安全领域的基础分析手段：<b>恶意代码分析</b>中用它理解样本行为与去混淆；
+<b>模糊测试</b>（如 AFL）用边覆盖率引导输入变异；<b>编译器优化</b>的数据流分析建立在 CFG 之上；
+<b>控制流完整性（CFI）</b>防护通过校验运行时控制流是否符合编译期算出的 CFG，来抵御 ROP 等攻击。
+本练习实现的正是这条技术链路的第 0 步 —— 而且是从 ELF 字节流开始的第一步。</p>
+
+<p class="small" style="margin-top:22px;border-top:1px solid #ddd;padding-top:8px">
+项目路径：<code>/home/kali/elfcfg/</code>　·　源码：<code>src/</code>（49 个文件，5992 行）　·
+测试：<code>tests/demo.c</code>　·　文档：<code>docs_native/</code>（8 份）
+</p>
+
+</body>
+</html>

@@ -213,7 +213,8 @@ int main(int argc, char **argv)
         printf("反汇编: 函数 %s（0x%llx，%llu 字节，共 %lu 条指令）\n",
                fn.name, (unsigned long long)fn.virtualAddress,
                (unsigned long long)fn.size, count);
-        printf("%-12s %-24s %s\n", "地址", "机器码", "指令");
+        /* 机器码字段宽度按 x86 最长指令 15 字节算：15*3 = 45 字符 */
+        printf("%-12s %-47s %s\n", "地址", "机器码", "指令");
 
         for (Instruction *ins = insns; ins != NULL; ins = ins->next) {
             char hex[16 * 3 + 1];
@@ -222,7 +223,7 @@ int main(int argc, char **argv)
                 off += snprintf(hex + off, sizeof(hex) - (size_t)off,
                                 "%02x ", ins->bytes[i]);
             }
-            printf("0x%-10llx %-24s %s %s\n",
+            printf("0x%-10llx %-47s %s %s\n",
                    (unsigned long long)ins->address, hex,
                    ins->mnemonic, ins->operands);
         }

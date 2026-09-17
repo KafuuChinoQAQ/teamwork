@@ -31,27 +31,33 @@ def parse_ours(text):
 
     格式： 0x401136     55                       push %rbp
             ^^^^^^^^^^^^ ^^^^^^^^^^^^^^^^^^^^^^^^ ^^^^^^^^^^^^^^
-             12 字符       1 空格 + 24 字符        1 空格 + 指令
+              地址        机器码（定宽字段）        助记符 操作数
+
+    用正则而不是固定列切片：机器码最长 15 字节（45 字符），
+    定宽字段会随指令长度浮动，切片方式容易错位。
     """
     items = []
+    pat = re.compile(
+        r'^(0x[0-9a-f]+)\s+((?:[0-9a-f]{2} )+)\s+(\S+)\s*(.*)$')
     for line in text.splitlines():
         if not line.startswith("0x"):
             continue
-        addr = line[0:12].strip()
-        ins = line[38:].strip()
-        if not ins:
+        m = pat.match(line)
+        if not m:
             continue
-        parts = ins.split(None, 1)
-        mnem = parts[0]
-        operands = parts[1].strip() if len(parts) > 1 else ""
-        items.append((int(addr, 16), mnem, operands))
+        items.append((int(m.group(1), 16), m.group(3), m.group(4).strip()))
     return items
 
 
 def parse_objdump(text):
     """解析 objdump -d 的输出（含机器码）。
 
-    格式：   401136:\t55                   \tpush   %rbp
+    正常行：   401136:\t55                   \tpush   %rbp
+    续行：     4ab3:\t00 00 00                        ← 长指令的剩余字节，无助记符
+
+    objdump 对超过 7 字节的指令会换行续写，续行只有"地址 + 剩余字节"。
+    必须跳过，否则会被当成新指令，造成假的"错位"。
+    判据：真实助记符都以字母开头，纯 2 位十六进制的必然是续行。
     """
     items = []
     pat = re.compile(
@@ -60,15 +66,35 @@ def parse_objdump(text):
         m = pat.match(line)
         if not m:
             continue
-        addr = int(m.group(1), 16)
         mnem = m.group(3)
+        if re.fullmatch(r'[0-9a-f]{2}', mnem):
+            continue                      # 续行，跳过
+        addr = int(m.group(1), 16)
         operands = m.group(4).strip()
         items.append((addr, mnem, operands))
     return items
 
 
+# AT&T 与 Intel 对同一指令的不同命名：
+#   - 符号扩展/转换指令族
+#   - movzx / movsx 系列：AT&T 把源操作数宽度编进助记符（movzbl = byte→long）
+MNEMONIC_ALIAS = {
+    "cltq": "cdqe", "cltd": "cdq",  "cqto": "cqo",
+    "cwtl": "cwde", "cwtd": "cwd",  "cbtw": "cbw",
+
+    "movzbl": "movzx", "movzbw": "movzx", "movzbq": "movzx",
+    "movzwl": "movzx", "movzwq": "movzx",
+
+    "movsbl": "movsx", "movsbw": "movsx", "movsbq": "movsx",
+    "movswl": "movsx", "movswq": "movsx",
+    "movslq": "movsxd",
+}
+
+
 def normalize_mnemonic(m):
-    """去掉 objdump 附加的操作数大小后缀，便于与我们的助记符比较"""
+    """把 objdump 的 AT&T 助记符规整成我们使用的 Intel 风格"""
+    if m in MNEMONIC_ALIAS:
+        return MNEMONIC_ALIAS[m]
     if len(m) > 3 and m[-1] in SIZE_SUFFIX:
         base = m[:-1]
         # 只在去掉后仍是常见基名时才去掉，避免误伤 call 这类
@@ -81,7 +107,12 @@ def normalize_mnemonic(m):
 
 
 def normalize_operands(ops):
-    """把 objdump 的 "401153 <classify+0x1d>" 规范成 "0x401153"""
+    """规整 objdump 的操作数写法，便于比较：
+
+    - 去掉行尾注释 "      # 11311 <_IO_stdin_used+0x311>"
+    - "401153 <classify+0x1d>"  →  "0x401153"
+    """
+    ops = re.sub(r'\s+#.*$', '', ops)          # 去掉 # 注释
     m = re.match(r'^([0-9a-f]+) <.*>$', ops)
     if m:
         return "0x" + m.group(1)

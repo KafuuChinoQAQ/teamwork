@@ -1,0 +1,18 @@
+digraph CFG {
+    /* 由 elfcfg 自动生成 —— 函数 main 的控制流图 */
+    /* 入口: 0x4012a3  基本块: 3  边: 3 */
+    rankdir=TB;
+    labelloc="t";
+    fontname="Helvetica";
+    label="Control Flow Graph of main()"
+    node [shape=box, fontname="Courier New", fontsize=10, style=filled, fillcolor="#eef4ff", color="#3b6ea5"];
+    edge [fontname="Helvetica", fontsize=9, color="#333333"];
+
+    B0 [label="B0\l0x4012a3:  push %rbp\l0x4012a4:  mov %rsp,%rbp\l0x4012a7:  sub $0x20,%rsp\l0x4012ab:  mov %edi,-0x14(%rbp)\l0x4012ae:  mov %rsi,-0x20(%rbp)\l0x4012b2:  mov $0x2a,-0x4(%rbp)\l0x4012b9:  cmp $0x1,-0x14(%rbp)\l0x4012bd:  jle 0x4012d5\l", fillcolor="#d8f0d8", color="#2e7d32"];
+    B1 [label="B1\l0x4012bf:  mov -0x20(%rbp),%rax\l0x4012c3:  add $0x8,%rax\l0x4012c7:  mov (%rax),%rax\l0x4012ca:  mov %rax,%rdi\l0x4012cd:  call 0x401040\l0x4012d2:  mov %eax,-0x4(%rbp)\l"];
+    B2 [label="B2\l0x4012d5:  mov -0x4(%rbp),%eax\l0x4012d8:  mov %eax,%edi\l0x4012da:  call 0x401136\l0x4012df:  mov %eax,%edx\l0x4012e1:  mov -0x4(%rbp),%eax\l0x4012e4:  mov %eax,%esi\l0x4012e6:  mov $0x402030,%edi\l0x4012eb:  mov $0x0,%eax\l0x4012f0:  call 0x401030\l0x4012f5:  mov -0x4(%rbp),%eax\l0x4012f8:  mov %eax,%edi\l0x4012fa:  call 0x401152\l0x4012ff:  mov %eax,%edx\l0x401301:  mov -0x4(%rbp),%eax\l0x401304:  mov %eax,%esi\l0x401306:  mov $0x402046,%edi\l0x40130b:  mov $0x0,%eax\l0x401310:  call 0x401030\l0x401315:  mov -0x4(%rbp),%eax\l0x401318:  mov %eax,%edi\l0x40131a:  call 0x401193\l0x40131f:  mov %eax,%edx\l0x401321:  mov -0x4(%rbp),%eax\l0x401324:  mov %eax,%esi\l0x401326:  mov $0x40205c,%edi\l0x40132b:  mov $0x0,%eax\l0x401330:  call 0x401030\l0x401335:  mov -0x4(%rbp),%eax\l0x401338:  mov %eax,%edi\l0x40133a:  call 0x4011cd\l0x40133f:  mov %eax,%edx\l0x401341:  mov -0x4(%rbp),%eax\l0x401344:  mov %eax,%esi\l0x401346:  mov $0x402072,%edi\l0x40134b:  mov $0x0,%eax\l0x401350:  call 0x401030\l0x401355:  mov -0x4(%rbp),%eax\l0x401358:  mov %eax,%edi\l0x40135a:  call 0x40121e\l0x40135f:  mov %eax,%edx\l0x401361:  mov -0x4(%rbp),%eax\l0x401364:  mov %eax,%esi\l0x401366:  mov $0x402088,%edi\l0x40136b:  mov $0x0,%eax\l0x401370:  call 0x401030\l0x401375:  mov -0x4(%rbp),%eax\l0x401378:  mov %eax,%edi\l0x40137a:  call 0x401262\l0x40137f:  mov %eax,%edx\l0x401381:  mov -0x4(%rbp),%eax\l0x401384:  mov %eax,%esi\l0x401386:  mov $0x40209e,%edi\l0x40138b:  mov $0x0,%eax\l0x401390:  call 0x401030\l0x401395:  mov $0x0,%eax\l0x40139a:  leave\l0x40139b:  ret\l", fillcolor="#ffe0e0", color="#b71c1c"];
+
+    B0 -> B2 [label="jle"];
+    B0 -> B1 [label="fall"];
+    B1 -> B2 [label="fall"];
+}

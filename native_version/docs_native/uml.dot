@@ -1,245 +1,246 @@
 /* UML 类图 —— elfcfg native 版本
  * 渲染：dot -Tpng uml.dot -o uml_native.png
- * 说明：空心三角 = 继承；虚线箭头 = 依赖/生产；空心菱形 = 聚合
+ *
+ * 说明：
+ *   空心三角 = 继承；虚线箭头 = 依赖 / 生产；空心菱形 = 聚合
+ *   每个类只列**最有代表性的成员**，完整接口见各头文件。
+ *   注意：Edge 与 DOT 关键字 edge 同名（关键字大小写不敏感），ID 必须加引号。
  */
 digraph UML {
-    rankdir=TB;
+    rankdir=LR;   /* 横向布局：六层从左到右展开，整体接近方形，便于在 A4 上阅读 */
     graph [fontname="Droid Sans Fallback", fontsize=14, labelloc="t",
-           label="elfcfg UML 类图（native 版本）\n", bgcolor="white",
-           nodesep=0.30, ranksep=0.45, compound=true];
+           label="elfcfg UML 类图（native 版本，6 层 / 15 组继承）\n", bgcolor="white",
+           nodesep=0.28, ranksep=0.42, compound=true];
     node  [shape=plaintext, fontname="Helvetica", fontsize=9];
     edge  [fontname="Droid Sans Fallback", fontsize=8, color="#444444"];
 
-    /* ============ ① 基础设施层 ============ */
+    /* ================= ① core 基础设施层 ================= */
     subgraph cluster_core {
-        label="① core 基础设施层";
-        style="rounded,dashed"; color="#8888aa"; fontcolor="#444466"; fontsize=11;
+        label="① core 基础设施层 —— 文件访问 / 内存 / 容器";
+        style="rounded,dashed"; color="#8888aa"; fontcolor="#444466"; fontsize=10;
 
         BinaryFile [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
-          <TR><TD BGCOLOR="#dde7f5"><I>&lt;&lt;abstract&gt;&gt;</I><BR/><B>BinaryFile</B></TD></TR>
-          <TR><TD ALIGN="LEFT"><I>+ openFile(path) : bool</I><BR ALIGN="LEFT"/><I>+ closeFile()</I><BR ALIGN="LEFT"/><I>+ data() : const uchar*</I><BR ALIGN="LEFT"/><I>+ size() : size_t</I><BR ALIGN="LEFT"/>+ rangeValid(off, len)<BR ALIGN="LEFT"/>+ at(off, len)</TD></TR>
+          <TR><TD BGCOLOR="#dde7f5"><I>&lt;&lt;abstract&gt;&gt;</I> <B>BinaryFile</B></TD></TR>
+          <TR><TD ALIGN="LEFT"><I>+ openFile(path) : bool</I><BR ALIGN="LEFT"/><I>+ data() / size()</I><BR ALIGN="LEFT"/>+ rangeValid(off, len)</TD></TR>
         </TABLE>>];
 
         MappedBinaryFile [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
           <TR><TD BGCOLOR="#c9dcf0"><B>MappedBinaryFile</B></TD></TR>
-          <TR><TD ALIGN="LEFT">- fd_ : int<BR ALIGN="LEFT"/>- map_ : uchar*<BR ALIGN="LEFT"/>+ openFile(path)<BR ALIGN="LEFT"/>+ closeFile()</TD></TR>
+          <TR><TD ALIGN="LEFT">- fd_ / map_<BR ALIGN="LEFT"/>+ openFile(path)</TD></TR>
         </TABLE>>];
 
         MemoryArena [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
           <TR><TD BGCOLOR="#c9dcf0"><B>MemoryArena</B></TD></TR>
-          <TR><TD ALIGN="LEFT">- chunks_ : Chunk*<BR ALIGN="LEFT"/>+ allocateRaw(bytes)<BR ALIGN="LEFT"/>+ create&lt;T&gt;() : T*</TD></TR>
+          <TR><TD ALIGN="LEFT">+ allocateRaw(bytes)<BR ALIGN="LEFT"/>+ create&lt;T&gt;()</TD></TR>
         </TABLE>>];
 
         SimpleVector [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
           <TR><TD BGCOLOR="#c9dcf0"><B>SimpleVector&lt;T&gt;</B></TD></TR>
-          <TR><TD ALIGN="LEFT">- data_ / size_ / capacity_<BR ALIGN="LEFT"/>+ pushBack(v) : bool<BR ALIGN="LEFT"/>+ operator[](i) : T&amp;</TD></TR>
+          <TR><TD ALIGN="LEFT">+ pushBack(v)<BR ALIGN="LEFT"/>+ operator[](i)</TD></TR>
         </TABLE>>];
     }
 
-    /* ============ ② ELF 解析层 ============ */
+    /* ================= ② elf 解析层 ================= */
     subgraph cluster_elf {
-        label="② elf 解析层";
-        style="rounded,dashed"; color="#88aa88"; fontcolor="#446644"; fontsize=11;
+        label="② elf 解析层 —— ELF 格式解析与函数定位";
+        style="rounded,dashed"; color="#88aa88"; fontcolor="#446644"; fontsize=10;
 
         ElfParser [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
           <TR><TD BGCOLOR="#c9dcf0"><B>ElfParser</B></TD></TR>
-          <TR><TD ALIGN="LEFT">- file_ : BinaryFile*<BR ALIGN="LEFT"/>+ open(path) : bool<BR ALIGN="LEFT"/>+ findFunction(name, out)<BR ALIGN="LEFT"/>+ dumpInfo() / dumpSections()</TD></TR>
+          <TR><TD ALIGN="LEFT">- file_ : BinaryFile*<BR ALIGN="LEFT"/>+ open(path)<BR ALIGN="LEFT"/>+ findFunction(name, out)</TD></TR>
         </TABLE>>];
 
         ElfHeaderView [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
           <TR><TD BGCOLOR="#c9dcf0"><B>ElfHeaderView</B></TD></TR>
-          <TR><TD ALIGN="LEFT">+ parse(data, size) : bool<BR ALIGN="LEFT"/>+ entry() : uint64<BR ALIGN="LEFT"/>+ machineName() / typeName()</TD></TR>
+          <TR><TD ALIGN="LEFT">+ parse(data, size)<BR ALIGN="LEFT"/>+ entry() / machine()</TD></TR>
         </TABLE>>];
 
         SectionTable [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
           <TR><TD BGCOLOR="#c9dcf0"><B>SectionTable</B></TD></TR>
-          <TR><TD ALIGN="LEFT">+ parse(...) : bool<BR ALIGN="LEFT"/>+ findByName(name) : int<BR ALIGN="LEFT"/>+ dataOf(idx) / sizeOf(idx)</TD></TR>
+          <TR><TD ALIGN="LEFT">+ findByName(name)<BR ALIGN="LEFT"/>+ dataOf(idx)</TD></TR>
         </TABLE>>];
 
         StringTable [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
           <TR><TD BGCOLOR="#c9dcf0"><B>StringTable</B></TD></TR>
-          <TR><TD ALIGN="LEFT">- base_ / size_<BR ALIGN="LEFT"/>+ bind(base, size)<BR ALIGN="LEFT"/>+ get(offset) : const char*</TD></TR>
+          <TR><TD ALIGN="LEFT">+ bind(base, size)<BR ALIGN="LEFT"/>+ get(offset)</TD></TR>
         </TABLE>>];
 
         SymbolTable [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
           <TR><TD BGCOLOR="#c9dcf0"><B>SymbolTable</B></TD></TR>
-          <TR><TD ALIGN="LEFT">- symbols_ : Elf64_Sym*<BR ALIGN="LEFT"/>+ parse(...) : bool<BR ALIGN="LEFT"/>+ findFunction(...) : bool</TD></TR>
-        </TABLE>>];
-
-        FunctionInfo [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="#f4fbf4">
-          <TR><TD BGCOLOR="#d8f0d8"><B>FunctionInfo</B> (struct)</TD></TR>
-          <TR><TD ALIGN="LEFT">+ name / virtualAddress / size<BR ALIGN="LEFT"/>+ fileOffset / code<BR ALIGN="LEFT"/>+ hasCode() / containsAddress()</TD></TR>
+          <TR><TD ALIGN="LEFT">+ parse(...)<BR ALIGN="LEFT"/>+ findFunction(...)</TD></TR>
         </TABLE>>];
 
         FunctionTable [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
           <TR><TD BGCOLOR="#c9dcf0"><B>FunctionTable</B></TD></TR>
-          <TR><TD ALIGN="LEFT">- functions_ : SimpleVector&lt;FunctionInfo&gt;<BR ALIGN="LEFT"/>+ build(...) : bool<BR ALIGN="LEFT"/>+ findByName(name)<BR ALIGN="LEFT"/>+ findByAddress(addr)</TD></TR>
+          <TR><TD ALIGN="LEFT">+ build(...)<BR ALIGN="LEFT"/>+ findByName(name)</TD></TR>
+        </TABLE>>];
+
+        FunctionInfo [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="#f4fbf4">
+          <TR><TD BGCOLOR="#d8f0d8"><B>FunctionInfo</B> (struct)</TD></TR>
+          <TR><TD ALIGN="LEFT">+ name / virtualAddress<BR ALIGN="LEFT"/>+ size / fileOffset / code</TD></TR>
         </TABLE>>];
     }
 
-    /* ============ ③ 指令解码层 ============ */
+    /* ================= ③ arch 指令解码层 ================= */
     subgraph cluster_arch {
-        label="③ arch 指令解码层";
-        style="rounded,dashed"; color="#aa8888"; fontcolor="#664444"; fontsize=11;
+        label="③ arch 指令解码层 —— 机器码 → Instruction";
+        style="rounded,dashed"; color="#aa8888"; fontcolor="#664444"; fontsize=10;
 
         InstructionDecoder [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
-          <TR><TD BGCOLOR="#dde7f5"><I>&lt;&lt;abstract&gt;&gt;</I><BR/><B>InstructionDecoder</B></TD></TR>
-          <TR><TD ALIGN="LEFT"><I>+ name() : const char*</I><BR ALIGN="LEFT"/><I>+ decode(code, remaining, addr, out) : bool</I><BR ALIGN="LEFT"/><I>+ lastError() : const char*</I></TD></TR>
+          <TR><TD BGCOLOR="#dde7f5"><I>&lt;&lt;abstract&gt;&gt;</I> <B>InstructionDecoder</B></TD></TR>
+          <TR><TD ALIGN="LEFT"><I>+ decode(code, remain, addr, out)</I><BR ALIGN="LEFT"/><I>+ name() / lastError()</I></TD></TR>
         </TABLE>>];
 
         X86_64Decoder [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
           <TR><TD BGCOLOR="#c9dcf0"><B>X86_64Decoder</B></TD></TR>
-          <TR><TD ALIGN="LEFT">+ decode(...) : bool<BR ALIGN="LEFT"/>- parsePrefixes(...) : size_t<BR ALIGN="LEFT"/>- parseModRM(...) : long<BR ALIGN="LEFT"/>- parseImmediate(...) : long<BR ALIGN="LEFT"/>- classify() / buildMnemonic()<BR ALIGN="LEFT"/>- buildOperands() / resolveControlFlow()</TD></TR>
+          <TR><TD ALIGN="LEFT">+ decode(...)<BR ALIGN="LEFT"/>- parsePrefixes / parseModRM<BR ALIGN="LEFT"/>- parseImmediate<BR ALIGN="LEFT"/>- buildOperands / resolveControlFlow</TD></TR>
         </TABLE>>];
 
         X86OpcodeTable [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
           <TR><TD BGCOLOR="#c9dcf0"><B>X86OpcodeTable</B></TD></TR>
-          <TR><TD ALIGN="LEFT">+ x86LookupOpcode(op, is2B)<BR ALIGN="LEFT"/>+ x86Group1..5Name(reg)<BR ALIGN="LEFT"/>+ x86ConditionName(code)</TD></TR>
+          <TR><TD ALIGN="LEFT">+ x86LookupOpcode(op, is2B)<BR ALIGN="LEFT"/>+ x86Group1..5Name(reg)</TD></TR>
         </TABLE>>];
 
         InstructionStream [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
           <TR><TD BGCOLOR="#c9dcf0"><B>InstructionStream</B></TD></TR>
-          <TR><TD ALIGN="LEFT">+ decodeInstructionStream(...)<BR ALIGN="LEFT"/>  : Instruction*<BR ALIGN="LEFT"/>&lt;&lt;未知 opcode 立即停止&gt;&gt;</TD></TR>
+          <TR><TD ALIGN="LEFT">+ decodeInstructionStream(...)<BR ALIGN="LEFT"/>&lt;&lt;未知 opcode 即停&gt;&gt;</TD></TR>
         </TABLE>>];
 
         Instruction [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="#f4fbf4">
           <TR><TD BGCOLOR="#d8f0d8"><B>Instruction</B> (struct)</TD></TR>
-          <TR><TD ALIGN="LEFT">+ address / bytes[16] / length<BR ALIGN="LEFT"/>+ mnemonic / operands<BR ALIGN="LEFT"/>+ type : InstructionType<BR ALIGN="LEFT"/>+ isBranch / isConditional / isCall<BR ALIGN="LEFT"/>+ isReturn / isIndirect<BR ALIGN="LEFT"/>+ targetKnown / target<BR ALIGN="LEFT"/>+ leader / prev / next<BR ALIGN="LEFT"/>+ fields : DecodedFields</TD></TR>
+          <TR><TD ALIGN="LEFT">+ address / bytes[16] / length<BR ALIGN="LEFT"/>+ mnemonic / operands<BR ALIGN="LEFT"/>+ type / isBranch / isConditional<BR ALIGN="LEFT"/>+ isCall / isReturn / isIndirect<BR ALIGN="LEFT"/>+ targetKnown / target / leader<BR ALIGN="LEFT"/>+ fields : DecodedFields</TD></TR>
         </TABLE>>];
     }
 
-    /* ============ ④ CFG 层 ============ */
+    /* ================= ④ cfg 层 ================= */
     subgraph cluster_cfg {
-        label="④ cfg 层";
-        style="rounded,dashed"; color="#aaaa66"; fontcolor="#666644"; fontsize=11;
+        label="④ cfg 控制流图层 —— 划分基本块与连边";
+        style="rounded,dashed"; color="#aaaa66"; fontcolor="#666644"; fontsize=10;
 
         BasicBlockBuilder [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
-          <TR><TD BGCOLOR="#dde7f5"><I>&lt;&lt;abstract&gt;&gt;</I><BR/><B>BasicBlockBuilder</B></TD></TR>
-          <TR><TD ALIGN="LEFT"><I>+ build(cfg, head) : bool</I><BR ALIGN="LEFT"/><I># endsBlock(ins) : int</I></TD></TR>
+          <TR><TD BGCOLOR="#dde7f5"><I>&lt;&lt;abstract&gt;&gt;</I> <B>BasicBlockBuilder</B></TD></TR>
+          <TR><TD ALIGN="LEFT"><I>+ build(cfg, head)</I><BR ALIGN="LEFT"/><I># endsBlock(ins)</I></TD></TR>
         </TABLE>>];
 
         LinearBBB [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
           <TR><TD BGCOLOR="#c9dcf0"><B>LinearBasicBlockBuilder</B></TD></TR>
-          <TR><TD ALIGN="LEFT">+ build(cfg, head) : bool<BR ALIGN="LEFT"/># endsBlock(ins) : int</TD></TR>
+          <TR><TD ALIGN="LEFT">+ build(cfg, head)<BR ALIGN="LEFT"/># endsBlock(ins)</TD></TR>
         </TABLE>>];
 
         EdgeAnalyzer [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
-          <TR><TD BGCOLOR="#dde7f5"><I>&lt;&lt;abstract&gt;&gt;</I><BR/><B>EdgeAnalyzer</B></TD></TR>
-          <TR><TD ALIGN="LEFT"><I>+ analyze(cfg) : bool</I><BR ALIGN="LEFT"/><I># analyzeBlock(cfg, b)</I></TD></TR>
+          <TR><TD BGCOLOR="#dde7f5"><I>&lt;&lt;abstract&gt;&gt;</I> <B>EdgeAnalyzer</B></TD></TR>
+          <TR><TD ALIGN="LEFT"><I>+ analyze(cfg)</I><BR ALIGN="LEFT"/><I># analyzeBlock(cfg, b)</I></TD></TR>
         </TABLE>>];
 
         X86EdgeAnalyzer [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
           <TR><TD BGCOLOR="#c9dcf0"><B>X86EdgeAnalyzer</B></TD></TR>
-          <TR><TD ALIGN="LEFT">+ analyze(cfg) : bool<BR ALIGN="LEFT"/># analyzeBlock(cfg, b)</TD></TR>
+          <TR><TD ALIGN="LEFT">+ analyze(cfg)<BR ALIGN="LEFT"/># analyzeBlock(cfg, b)</TD></TR>
         </TABLE>>];
 
         ControlFlowGraph [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
           <TR><TD BGCOLOR="#c9dcf0"><B>ControlFlowGraph</B></TD></TR>
-          <TR><TD ALIGN="LEFT">- blocksHead_ / edgesHead_ / entry_<BR ALIGN="LEFT"/>+ addBlock(start, first, last)<BR ALIGN="LEFT"/>+ addEdge(from, to, type, ...)<BR ALIGN="LEFT"/>+ findBlockByAddress(addr)<BR ALIGN="LEFT"/>+ blockCount() / edgeCount()</TD></TR>
+          <TR><TD ALIGN="LEFT">+ addBlock(...) / addEdge(...)<BR ALIGN="LEFT"/>+ findBlockByAddress(addr)<BR ALIGN="LEFT"/>+ blockCount() / edgeCount()</TD></TR>
         </TABLE>>];
 
         BasicBlock [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="#f4fbf4">
           <TR><TD BGCOLOR="#d8f0d8"><B>BasicBlock</B> (struct)</TD></TR>
-          <TR><TD ALIGN="LEFT">+ id / startAddress / endAddress<BR ALIGN="LEFT"/>+ first / last : Instruction*<BR ALIGN="LEFT"/>+ reachable / loopHeader<BR ALIGN="LEFT"/>+ next : BasicBlock*</TD></TR>
+          <TR><TD ALIGN="LEFT">+ id / startAddress / endAddress<BR ALIGN="LEFT"/>+ first / last : Instruction*<BR ALIGN="LEFT"/>+ reachable / loopHeader</TD></TR>
         </TABLE>>];
 
-        /* 注意：Edge 与 DOT 关键字 edge 同名（关键字大小写不敏感），ID 必须加引号 */
         "Edge" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="#f4fbf4">
           <TR><TD BGCOLOR="#d8f0d8"><B>Edge</B> (struct)</TD></TR>
-          <TR><TD ALIGN="LEFT">+ from / to : BasicBlock*<BR ALIGN="LEFT"/>+ type : EdgeType<BR ALIGN="LEFT"/>+ targetAddress / targetResolved<BR ALIGN="LEFT"/>+ isBackwardHint / label / next</TD></TR>
+          <TR><TD ALIGN="LEFT">+ from / to : BasicBlock*<BR ALIGN="LEFT"/>+ type : EdgeType<BR ALIGN="LEFT"/>+ isBackwardHint / label</TD></TR>
         </TABLE>>];
     }
 
-    /* ============ ⑤ 分析层 ============ */
+    /* ================= ⑤ analysis 分析层 ================= */
     subgraph cluster_analysis {
-        label="⑤ analysis 分析层";
-        style="rounded,dashed"; color="#aaccaa"; fontcolor="#44664"; fontsize=11;
+        label="⑤ analysis 分析层 —— 可插拔的分析 Pass";
+        style="rounded,dashed"; color="#88bb88"; fontcolor="#446644"; fontsize=10;
 
         AnalysisPass [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
-          <TR><TD BGCOLOR="#dde7f5"><I>&lt;&lt;abstract&gt;&gt;</I><BR/><B>AnalysisPass</B></TD></TR>
-          <TR><TD ALIGN="LEFT"><I>+ name() : const char*</I><BR ALIGN="LEFT"/><I>+ description() : const char*</I><BR ALIGN="LEFT"/><I>+ run(cfg) : bool</I></TD></TR>
+          <TR><TD BGCOLOR="#dde7f5"><I>&lt;&lt;abstract&gt;&gt;</I> <B>AnalysisPass</B></TD></TR>
+          <TR><TD ALIGN="LEFT"><I>+ name() / description()</I><BR ALIGN="LEFT"/><I>+ run(cfg) : bool</I></TD></TR>
         </TABLE>>];
 
         ReachabilityPass [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
           <TR><TD BGCOLOR="#c9dcf0"><B>ReachabilityPass</B></TD></TR>
-          <TR><TD ALIGN="LEFT">+ run(cfg) : bool<BR ALIGN="LEFT"/>+ reachableCount()</TD></TR>
+          <TR><TD ALIGN="LEFT">+ run(cfg)<BR ALIGN="LEFT"/>+ reachableCount()</TD></TR>
         </TABLE>>];
 
         LoopHintPass [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
           <TR><TD BGCOLOR="#c9dcf0"><B>LoopHintPass</B></TD></TR>
-          <TR><TD ALIGN="LEFT">+ run(cfg) : bool<BR ALIGN="LEFT"/>+ hintCount() / printHints()<BR ALIGN="LEFT"/>&lt;&lt;backward jump hint&gt;&gt;</TD></TR>
+          <TR><TD ALIGN="LEFT">+ run(cfg)<BR ALIGN="LEFT"/>+ printHints()<BR ALIGN="LEFT"/>&lt;&lt;backward jump hint&gt;&gt;</TD></TR>
         </TABLE>>];
 
         StatisticsPass [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
           <TR><TD BGCOLOR="#c9dcf0"><B>StatisticsPass</B></TD></TR>
-          <TR><TD ALIGN="LEFT">+ run(cfg) : bool<BR ALIGN="LEFT"/>+ stats() / print()</TD></TR>
+          <TR><TD ALIGN="LEFT">+ run(cfg)<BR ALIGN="LEFT"/>+ stats() / print()</TD></TR>
         </TABLE>>];
 
         FuturePasses [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="#fbfbf4">
-          <TR><TD BGCOLOR="#eeeecc">后续实验接口（骨架）</TD></TR>
+          <TR><TD BGCOLOR="#eeeecc"><B>后续实验接口</B>（骨架）</TD></TR>
           <TR><TD ALIGN="LEFT">FunctionAnalysis<BR ALIGN="LEFT"/>  ├ StackAnalysis<BR ALIGN="LEFT"/>  ├ DangerousCallAnalysis<BR ALIGN="LEFT"/>  └ MemoryAccessAnalysis<BR ALIGN="LEFT"/>DataFlowPass<BR ALIGN="LEFT"/>  └ TaintAnalysis</TD></TR>
         </TABLE>>];
     }
 
-    /* ============ ⑥ 输出层 ============ */
+    /* ================= ⑥ output 输出层 ================= */
     subgraph cluster_output {
         label="⑥ output 输出层";
-        style="rounded,dashed"; color="#ccaacc"; fontcolor="#664466"; fontsize=11;
+        style="rounded,dashed"; color="#ccaacc"; fontcolor="#664466"; fontsize=10;
 
         GraphWriter [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
-          <TR><TD BGCOLOR="#dde7f5"><I>&lt;&lt;abstract&gt;&gt;</I><BR/><B>GraphWriter</B></TD></TR>
-          <TR><TD ALIGN="LEFT"><I>+ name() : const char*</I><BR ALIGN="LEFT"/><I>+ write(out, cfg) : bool</I><BR ALIGN="LEFT"/># writeEscaped / dotEscapeText</TD></TR>
+          <TR><TD BGCOLOR="#dde7f5"><I>&lt;&lt;abstract&gt;&gt;</I> <B>GraphWriter</B></TD></TR>
+          <TR><TD ALIGN="LEFT"><I>+ write(out, cfg) : bool</I></TD></TR>
         </TABLE>>];
 
         DotGraphWriter [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
           <TR><TD BGCOLOR="#c9dcf0"><B>DotGraphWriter</B></TD></TR>
-          <TR><TD ALIGN="LEFT">+ write(out, cfg) : bool</TD></TR>
+          <TR><TD ALIGN="LEFT">+ write(out, cfg)<BR ALIGN="LEFT"/>&lt;&lt;Graphviz DOT&gt;&gt;</TD></TR>
         </TABLE>>];
 
         TextWriter [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
           <TR><TD BGCOLOR="#c9dcf0"><B>TextWriter</B></TD></TR>
-          <TR><TD ALIGN="LEFT">+ write(out, cfg) : bool</TD></TR>
+          <TR><TD ALIGN="LEFT">+ write(out, cfg)<BR ALIGN="LEFT"/>&lt;&lt;纯文本 CFG&gt;&gt;</TD></TR>
         </TABLE>>];
     }
 
     /* ================= 继承关系（空心三角） ================= */
-    MappedBinaryFile      -> BinaryFile        [arrowhead=onormal, penwidth=1.5];
-    X86_64Decoder         -> InstructionDecoder[arrowhead=onormal, penwidth=1.5];
-    LinearBBB             -> BasicBlockBuilder [arrowhead=onormal, penwidth=1.5];
-    X86EdgeAnalyzer       -> EdgeAnalyzer      [arrowhead=onormal, penwidth=1.5];
-    ReachabilityPass      -> AnalysisPass      [arrowhead=onormal, penwidth=1.5];
-    LoopHintPass          -> AnalysisPass      [arrowhead=onormal, penwidth=1.5];
-    StatisticsPass        -> AnalysisPass      [arrowhead=onormal, penwidth=1.5];
-    DotGraphWriter        -> GraphWriter       [arrowhead=onormal, penwidth=1.5];
-    TextWriter            -> GraphWriter       [arrowhead=onormal, penwidth=1.5];
+    MappedBinaryFile -> BinaryFile         [arrowhead=onormal, penwidth=1.5];
+    X86_64Decoder    -> InstructionDecoder [arrowhead=onormal, penwidth=1.5];
+    LinearBBB        -> BasicBlockBuilder  [arrowhead=onormal, penwidth=1.5];
+    X86EdgeAnalyzer  -> EdgeAnalyzer       [arrowhead=onormal, penwidth=1.5];
+    ReachabilityPass -> AnalysisPass       [arrowhead=onormal, penwidth=1.5];
+    LoopHintPass     -> AnalysisPass       [arrowhead=onormal, penwidth=1.5];
+    StatisticsPass   -> AnalysisPass       [arrowhead=onormal, penwidth=1.5];
+    DotGraphWriter   -> GraphWriter        [arrowhead=onormal, penwidth=1.5];
+    TextWriter       -> GraphWriter        [arrowhead=onormal, penwidth=1.5];
 
-    /* ================= 依赖 / 生产（虚线） ================= */
-    ElfParser            -> BinaryFile         [style=dashed, arrowhead=vee, constraint=false];
-    ElfParser            -> SectionTable       [style=dashed, arrowhead=vee, constraint=false];
-    ElfParser            -> SymbolTable        [style=dashed, arrowhead=vee, constraint=false];
-    ElfParser            -> FunctionTable      [style=dashed, arrowhead=vee, constraint=false];
-    SectionTable         -> StringTable        [style=dashed, arrowhead=vee, constraint=false];
-    SymbolTable          -> StringTable        [style=dashed, arrowhead=vee, constraint=false];
-    SymbolTable          -> FunctionInfo       [style=dashed, arrowhead=vee, label="生产"];
-    FunctionTable        -> FunctionInfo       [style=dashed, arrowhead=vee, constraint=false];
+    /* ================= 依赖 / 生产（虚线箭头） ================= */
+    ElfParser       -> BinaryFile     [style=dashed, arrowhead=vee, label="持有", constraint=false];
+    ElfParser       -> SectionTable   [style=dashed, arrowhead=vee, constraint=false];
+    ElfParser       -> SymbolTable    [style=dashed, arrowhead=vee, constraint=false];
+    ElfParser       -> FunctionTable  [style=dashed, arrowhead=vee, constraint=false];
+    SectionTable    -> StringTable    [style=dashed, arrowhead=vee, label="节名", constraint=false];
+    SymbolTable     -> StringTable    [style=dashed, arrowhead=vee, label="符号名", constraint=false];
+    SymbolTable     -> FunctionInfo   [style=dashed, arrowhead=vee, label="生产"];
+    FunctionTable   -> FunctionInfo   [style=dashed, arrowhead=vee, constraint=false];
 
-    InstructionStream    -> InstructionDecoder [style=dashed, arrowhead=vee, label="基类指针"];
-    InstructionStream    -> Instruction        [style=dashed, arrowhead=vee, label="生产"];
-    X86_64Decoder        -> X86OpcodeTable     [style=dashed, arrowhead=vee, constraint=false];
+    InstructionStream -> InstructionDecoder [style=dashed, arrowhead=vee, label="基类指针"];
+    InstructionStream -> Instruction        [style=dashed, arrowhead=vee, label="生产"];
+    X86_64Decoder     -> X86OpcodeTable     [style=dashed, arrowhead=vee, constraint=false];
 
-    LinearBBB            -> ControlFlowGraph   [style=dashed, arrowhead=vee, label="生产块"];
-    X86EdgeAnalyzer      -> ControlFlowGraph   [style=dashed, arrowhead=vee, label="生产边"];
-    ControlFlowGraph     -> BasicBlock         [style=dashed, arrowhead=vee, constraint=false];
-    ControlFlowGraph     -> "Edge"             [style=dashed, arrowhead=vee, constraint=false];
-    BasicBlock           -> Instruction        [arrowhead=odiamond, label="first/last", constraint=false];
-    "Edge"               -> BasicBlock         [style=dashed, arrowhead=vee, label="from/to", constraint=false];
+    LinearBBB       -> ControlFlowGraph [style=dashed, arrowhead=vee, label="生产块"];
+    X86EdgeAnalyzer -> ControlFlowGraph [style=dashed, arrowhead=vee, label="生产边"];
+    ControlFlowGraph-> BasicBlock       [style=dashed, arrowhead=vee, constraint=false];
+    ControlFlowGraph-> "Edge"           [style=dashed, arrowhead=vee, constraint=false];
+    BasicBlock      -> Instruction      [arrowhead=odiamond, label="first/last", constraint=false];
+    "Edge"          -> BasicBlock       [style=dashed, arrowhead=vee, label="from/to", constraint=false];
 
-    AnalysisPass         -> ControlFlowGraph   [style=dashed, arrowhead=vee, label="分析"];
-    GraphWriter          -> ControlFlowGraph   [style=dashed, arrowhead=vee, label="读取"];
+    AnalysisPass -> ControlFlowGraph [style=dashed, arrowhead=vee, label="分析"];
+    GraphWriter  -> ControlFlowGraph [style=dashed, arrowhead=vee, label="读取"];
 
-    /* ================= 布局约束 =================
-     * 让六个分层纵向堆叠，避免出现 5000+ 像素的超宽图。
-     * 用不可见边给 dot 一个明确的层级顺序。 */
+    /* ================= 布局约束：六层纵向堆叠，避免超宽 ================= */
     BinaryFile         -> ElfHeaderView      [style=invis, weight=10];
     ElfHeaderView      -> InstructionDecoder [style=invis, weight=10];
     InstructionDecoder -> BasicBlockBuilder  [style=invis, weight=10];

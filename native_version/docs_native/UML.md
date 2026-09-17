@@ -1,8 +1,33 @@
 # UML 类图（native 版本）
 
+提供两张，用途不同：
+
+## 完整版（含各类的代表性成员）
+
 ![UML 类图](uml_native.png)
 
-> 图片由 `docs_native/uml.dot` 渲染：`dot -Tpng uml.dot -o uml_native.png`
+> 渲染：`dot -Tpng uml.dot -o uml_native.png`　（1976 × 2320，比例 0.85）
+
+## 精简版（只看分层与继承骨架，适合投屏/PDF 插图）
+
+![UML 类结构总览](uml_overview.png)
+
+> 渲染：`dot -Tpng uml_overview.dot -o uml_overview.png`　（1309 × 1372，比例 0.95）
+
+---
+
+## 关于布局
+
+两张都使用 **`rankdir=LR`（横向布局）**：六个分层从左下到右上依次展开。
+
+一开始用的是默认的纵向布局（`rankdir=TB`），但 25 个类会在同一层横排，
+渲染出来是 **4621 × 1417**（宽高比 3.26）——缩放到 A4 页宽后只剩 56 mm 高，
+字小到看不清。改成 LR 之后变成 **1976 × 2320**（比例 0.85），
+在 A4 上能占满整页，可读性问题解决。
+
+> 经验：类图节点多的时候，`rankdir` 对最终可读性的影响比字体大小更大。
+
+---
 
 ---
 

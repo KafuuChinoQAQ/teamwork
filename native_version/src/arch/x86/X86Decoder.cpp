@@ -161,6 +161,25 @@ static void formatMem(const Instruction *ins, char *buf, size_t bufsize)
     }
 }
 
+/* ---------------------------------------------------------------------------
+ * 累加器类指令（04/0C/…/3C、A8/A9、05/0D/…/3D）的目标寄存器名
+ * 这类指令隐含使用 AL/AX/EAX/RAX，需要按宽度选名
+ * ------------------------------------------------------------------------- */
+static const char *accumulatorName(unsigned char opcode, const DecodedFields *f)
+{
+    switch (opcode) {
+    case 0x04: case 0x0C: case 0x14: case 0x1C:
+    case 0x24: case 0x2C: case 0x34: case 0x3C:
+    case 0xA8:
+        return "al";                 /* 字节版本 */
+    default:
+        break;
+    }
+    if (f->rexW)         return "rax";
+    if (f->opsizePrefix) return "ax";
+    return "eax";
+}
+
 /* 格式化 r/m 操作数（寄存器或内存） */
 static void formatRmOperand(const Instruction *ins, char *buf, size_t bufsize,
                             int sizeBytes)
@@ -443,6 +462,18 @@ void X86_64Decoder::buildMnemonic(Instruction *ins, const X86OpcodeEntry *entry)
         n = snprintf(buf, sizeof(buf), "%s", x86Group5Name(f->groupExt));
     } else if (entry->enc == ENC_GROUP7) {
         n = snprintf(buf, sizeof(buf), "%s", x86Group7Name(f->groupExt));
+    } else if (!entry->isTwoByte && (entry->opcode == 0x98 || entry->opcode == 0x99)) {
+        /* 符号扩展/转换指令族：名字随操作数宽度变化
+         *   98: cbw / cwde / cdqe      99: cwd / cdq / cqo */
+        if (entry->opcode == 0x98) {
+            if (f->rexW)              n = snprintf(buf, sizeof(buf), "cdqe");
+            else if (f->opsizePrefix) n = snprintf(buf, sizeof(buf), "cbw");
+            else                      n = snprintf(buf, sizeof(buf), "cwde");
+        } else {
+            if (f->rexW)              n = snprintf(buf, sizeof(buf), "cqo");
+            else if (f->opsizePrefix) n = snprintf(buf, sizeof(buf), "cwd");
+            else                      n = snprintf(buf, sizeof(buf), "cdq");
+        }
     } else if (!entry->isTwoByte && entry->opcode >= 0xE0 && entry->opcode <= 0xE3) {
         /* LOOP 家族助记符各不相同 */
         switch (entry->opcode) {
@@ -450,6 +481,16 @@ void X86_64Decoder::buildMnemonic(Instruction *ins, const X86OpcodeEntry *entry)
         case 0xE1: n = snprintf(buf, sizeof(buf), "loope");  break;
         case 0xE2: n = snprintf(buf, sizeof(buf), "loop");   break;
         default:   n = snprintf(buf, sizeof(buf), "jrcxz");  break;
+        }
+    } else if (entry->isTwoByte && entry->opcode == 0x1E) {
+        /* F3 0F 1E FA = endbr64，F3 0F 1E FB = endbr32
+         * （CFI 控制流保护插桩，函数入口常见；其余形态按 nop 处理） */
+        if (f->hasModRM && f->modrm == 0xFA) {
+            n = snprintf(buf, sizeof(buf), "endbr64");
+        } else if (f->hasModRM && f->modrm == 0xFB) {
+            n = snprintf(buf, sizeof(buf), "endbr32");
+        } else {
+            n = snprintf(buf, sizeof(buf), "nop");
         }
     } else if (entry->isTwoByte && (f->opcode & 0xF0) == 0x90) {
         /* 0F 90-9F：setcc */
@@ -536,8 +577,9 @@ void X86_64Decoder::buildOperands(Instruction *ins, const X86OpcodeEntry *entry)
     case ENC_GROUP5: {
         formatRmOperand(ins, rmBuf, sizeof(rmBuf),
                         (f->groupExt == 2 || f->groupExt == 4) ? 8 : sizeBytes);
-        if (f->groupExt == 4) {
-            /* jmp *r/m —— 间接跳转，加 * 前缀表示目标来自寄存器/内存 */
+        if (f->groupExt == 2 || f->groupExt == 4) {
+            /* 间接 call / jmp：AT&T 语法用 * 前缀表示"目标来自寄存器或内存"，
+             * 与直接跳转（目标写在指令里）区分开 */
             snprintf(ins->operands, sizeof(ins->operands), "*%s", rmBuf);
         } else {
             snprintf(ins->operands, sizeof(ins->operands), "%s", rmBuf);
@@ -567,8 +609,17 @@ void X86_64Decoder::buildOperands(Instruction *ins, const X86OpcodeEntry *entry)
     if (entry->enc == ENC_PLUS_RD_IMM) {
         int regSize = f->rexW ? 8 : (f->opsizePrefix ? 2 : 4);
         formatRegOperand(ins, regBuf, sizeof(regBuf), regSize, 0);
+
+        /* 立即数按**目标寄存器宽度**截断显示：
+         * mov $0xffffffff,%eax 应当显示 0xffffffff，
+         * 而不是符号扩展后的 0xffffffffffffffff */
+        uint64_t value = (uint64_t)f->immediate;
+        if (regSize == 4)      value &= 0xFFFFFFFFULL;
+        else if (regSize == 2) value &= 0xFFFFULL;
+        else if (regSize == 1) value &= 0xFFULL;
+
         snprintf(ins->operands, sizeof(ins->operands), "$0x%llx,%s",
-                 (unsigned long long)(uint64_t)f->immediate, regBuf);
+                 (unsigned long long)value, regBuf);
         return;
     }
 
@@ -581,8 +632,10 @@ void X86_64Decoder::buildOperands(Instruction *ins, const X86OpcodeEntry *entry)
             snprintf(ins->operands, sizeof(ins->operands), "$0x%llx",
                      (unsigned long long)(uint64_t)f->immediate);
         } else {
-            snprintf(ins->operands, sizeof(ins->operands), "$0x%llx,%%eax",
-                     (unsigned long long)(uint64_t)f->immediate);
+            /* 累加器类指令：AL / AX / EAX / RAX 按宽度选 */
+            snprintf(ins->operands, sizeof(ins->operands), "$0x%llx,%%%s",
+                     (unsigned long long)(uint64_t)f->immediate,
+                     accumulatorName(f->opcode, f));
         }
         return;
     case ENC_NONE:
@@ -598,15 +651,40 @@ void X86_64Decoder::buildOperands(Instruction *ins, const X86OpcodeEntry *entry)
         snprintf(ins->operands, sizeof(ins->operands), "%s", rmBuf);
         return;
     }
+    if (entry->isTwoByte && entry->opcode == 0x1F) {
+        /* 0F 1F /0 = 多字节 nop，只显示 r/m 操作数 */
+        formatRmOperand(ins, rmBuf, sizeof(rmBuf), sizeBytes);
+        snprintf(ins->operands, sizeof(ins->operands), "%s", rmBuf);
+        return;
+    }
+    if (entry->isTwoByte && entry->opcode == 0x1E) {
+        /* endbr64 / endbr32 是**无操作数**指令：ModRM 字节只是编码的一部分，
+         * 不表示任何操作数 */
+        if (f->hasModRM && (f->modrm == 0xFA || f->modrm == 0xFB)) {
+            ins->operands[0] = '\0';
+            return;
+        }
+        formatRmOperand(ins, rmBuf, sizeof(rmBuf), sizeBytes);
+        snprintf(ins->operands, sizeof(ins->operands), "%s", rmBuf);
+        return;
+    }
+    if (entry->isTwoByte && (f->opcode & 0xF0) == 0x90) {
+        /* 0F 90-9F = SETcc r/m8：单操作数，且只操作 8 位 */
+        formatRmOperand(ins, rmBuf, sizeof(rmBuf), 1);
+        snprintf(ins->operands, sizeof(ins->operands), "%s", rmBuf);
+        return;
+    }
 
     /* ---------------- ModRM 类 ---------------- */
     if (!f->hasModRM) return;
 
-    /* movzx / movsx 的 r/m 操作数与目标寄存器宽度不同 */
+    /* 源操作数宽度与目标寄存器不同的指令 */
     int rmSize = sizeBytes;
     if (entry->isTwoByte) {
-        if (entry->opcode == 0xB6 || entry->opcode == 0xBE) rmSize = 1;
-        else if (entry->opcode == 0xB7 || entry->opcode == 0xBF) rmSize = 2;
+        if (entry->opcode == 0xB6 || entry->opcode == 0xBE) rmSize = 1;  /* movzx/movsx r, r/m8  */
+        else if (entry->opcode == 0xB7 || entry->opcode == 0xBF) rmSize = 2; /* movzx/movsx r, r/m16 */
+    } else if (entry->opcode == 0x63) {
+        rmSize = 4;                     /* movsxd r64, r/m32 —— 源固定 32 位 */
     }
 
     /* 操作数顺序：算术/逻辑/mov/test 组由 opcode 低 2 位决定 */
@@ -639,7 +717,11 @@ void X86_64Decoder::buildOperands(Instruction *ins, const X86OpcodeEntry *entry)
      *   0F 系（movzx/movsx/imul/cmovcc）：
      *       Intel (reg, r/m) → AT&T (r/m, reg) → r/m 先
      * --------------------------------------------------------------------- */
-    if (entry->isTwoByte) {
+    if (!entry->isTwoByte && entry->opcode == 0x8D) {
+        /* lea 是特例：Intel 写成 (reg, m)，AT&T 写成 (m, reg)，
+         * 内存操作数在前 —— 不能用下面的低 2 位规律 */
+        rmFirst = 1;
+    } else if (entry->isTwoByte) {
         rmFirst = 1;
     } else {
         rmFirst = ((entry->opcode & 0x03) >= 2) ? 1 : 0;

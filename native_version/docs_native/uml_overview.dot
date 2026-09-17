@@ -1,0 +1,118 @@
+/* UML 类图（精简版）—— 只看分层与继承骨架
+ * 渲染：dot -Tpng uml_overview.dot -o uml_overview.png
+ *
+ * 用途：投屏 / PDF 插图。完整版（含成员列表）见 uml.dot → uml_native.png。
+ */
+digraph UMLOverview {
+    rankdir=LR;   /* 横向布局：六层从左到右展开，整体接近方形，便于在 A4 上阅读 */
+    graph [fontname="Droid Sans Fallback", fontsize=14, labelloc="t",
+           label="elfcfg 类结构总览（6 层 / 15 组继承）\n", bgcolor="white",
+           nodesep=0.20, ranksep=0.34];
+    node  [shape=box, style="filled,rounded", fontname="Helvetica", fontsize=10,
+           fillcolor="white", color="#3b6ea5", penwidth=1.1, height=0.32];
+    edge  [color="#444444", arrowsize=0.7, fontname="Droid Sans Fallback", fontsize=8];
+
+    /* ---- ① core ---- */
+    subgraph cluster_core {
+        label="① core 基础设施层"; style="rounded,dashed";
+        color="#8888aa"; fontcolor="#444466"; fontsize=10;
+        BinaryFile      [label="«abstract»\nBinaryFile", fillcolor="#dde7f5", shape=box];
+        MappedBinaryFile[label="MappedBinaryFile"];
+        MemoryArena     [label="MemoryArena"];
+        SimpleVector    [label="SimpleVector<T>"];
+    }
+
+    /* ---- ② elf ---- */
+    subgraph cluster_elf {
+        label="② elf 解析层"; style="rounded,dashed";
+        color="#88aa88"; fontcolor="#446644"; fontsize=10;
+        ElfParser    [label="ElfParser"];
+        ElfHeaderView[label="ElfHeaderView"];
+        SectionTable [label="SectionTable"];
+        StringTable  [label="StringTable"];
+        SymbolTable  [label="SymbolTable"];
+        FunctionTable[label="FunctionTable"];
+        FunctionInfo [label="FunctionInfo\n(struct)", fillcolor="#d8f0d8"];
+    }
+
+    /* ---- ③ arch ---- */
+    subgraph cluster_arch {
+        label="③ arch 指令解码层"; style="rounded,dashed";
+        color="#aa8888"; fontcolor="#664444"; fontsize=10;
+        InstructionDecoder[label="«abstract»\nInstructionDecoder", fillcolor="#dde7f5"];
+        X86_64Decoder     [label="X86_64Decoder"];
+        X86OpcodeTable    [label="X86OpcodeTable"];
+        InstructionStream [label="InstructionStream"];
+        Instruction       [label="Instruction\n(struct)", fillcolor="#d8f0d8"];
+    }
+
+    /* ---- ④ cfg ---- */
+    subgraph cluster_cfg {
+        label="④ cfg 控制流图层"; style="rounded,dashed";
+        color="#aaaa66"; fontcolor="#666644"; fontsize=10;
+        BasicBlockBuilder[label="«abstract»\nBasicBlockBuilder", fillcolor="#dde7f5"];
+        LinearBBB        [label="LinearBasicBlockBuilder"];
+        EdgeAnalyzer     [label="«abstract»\nEdgeAnalyzer", fillcolor="#dde7f5"];
+        X86EdgeAnalyzer  [label="X86EdgeAnalyzer"];
+        ControlFlowGraph [label="ControlFlowGraph"];
+        BasicBlock       [label="BasicBlock\n(struct)", fillcolor="#d8f0d8"];
+        "Edge"           [label="Edge\n(struct)", fillcolor="#d8f0d8"];
+    }
+
+    /* ---- ⑤ analysis ---- */
+    subgraph cluster_analysis {
+        label="⑤ analysis 分析层"; style="rounded,dashed";
+        color="#88bb88"; fontcolor="#446644"; fontsize=10;
+        AnalysisPass    [label="«abstract»\nAnalysisPass", fillcolor="#dde7f5"];
+        ReachabilityPass[label="ReachabilityPass"];
+        LoopHintPass    [label="LoopHintPass"];
+        StatisticsPass  [label="StatisticsPass"];
+        FunctionAnalysis[label="«abstract»\nFunctionAnalysis", fillcolor="#fbfbf4"];
+        DataFlowPass    [label="«abstract»\nDataFlowPass", fillcolor="#fbfbf4"];
+        FutureImpl      [label="StackAnalysis /\nDangerousCallAnalysis /\nMemoryAccessAnalysis /\nTaintAnalysis", fillcolor="#fbfbf4", fontsize=8];
+    }
+
+    /* ---- ⑥ output ---- */
+    subgraph cluster_output {
+        label="⑥ output 输出层"; style="rounded,dashed";
+        color="#ccaacc"; fontcolor="#664466"; fontsize=10;
+        GraphWriter   [label="«abstract»\nGraphWriter", fillcolor="#dde7f5"];
+        DotGraphWriter[label="DotGraphWriter"];
+        TextWriter    [label="TextWriter"];
+    }
+
+    /* ---- 继承（实线空心三角） ---- */
+    MappedBinaryFile -> BinaryFile         [arrowhead=onormal, penwidth=1.6];
+    X86_64Decoder    -> InstructionDecoder [arrowhead=onormal, penwidth=1.6];
+    LinearBBB        -> BasicBlockBuilder  [arrowhead=onormal, penwidth=1.6];
+    X86EdgeAnalyzer  -> EdgeAnalyzer       [arrowhead=onormal, penwidth=1.6];
+    ReachabilityPass -> AnalysisPass       [arrowhead=onormal, penwidth=1.6];
+    LoopHintPass     -> AnalysisPass       [arrowhead=onormal, penwidth=1.6];
+    StatisticsPass   -> AnalysisPass       [arrowhead=onormal, penwidth=1.6];
+    FunctionAnalysis -> AnalysisPass       [arrowhead=onormal, penwidth=1.6];
+    DataFlowPass     -> AnalysisPass       [arrowhead=onormal, penwidth=1.6];
+    FutureImpl       -> FunctionAnalysis   [arrowhead=onormal, penwidth=1.2, style=dashed];
+    FutureImpl       -> DataFlowPass       [arrowhead=onormal, penwidth=1.2, style=dashed];
+    DotGraphWriter   -> GraphWriter        [arrowhead=onormal, penwidth=1.6];
+    TextWriter       -> GraphWriter        [arrowhead=onormal, penwidth=1.6];
+
+    /* ---- 层间依赖（虚线） ---- */
+    ElfParser         -> BinaryFile         [style=dashed, arrowhead=vee, label="持有", constraint=false];
+    SymbolTable       -> FunctionInfo       [style=dashed, arrowhead=vee, constraint=false];
+    FunctionTable     -> FunctionInfo       [style=dashed, arrowhead=vee, constraint=false];
+    InstructionStream -> InstructionDecoder [style=dashed, arrowhead=vee, label="基类指针"];
+    InstructionStream -> Instruction        [style=dashed, arrowhead=vee];
+    LinearBBB         -> ControlFlowGraph   [style=dashed, arrowhead=vee, label="生产块"];
+    X86EdgeAnalyzer   -> ControlFlowGraph   [style=dashed, arrowhead=vee, label="生产边"];
+    BasicBlock        -> Instruction        [arrowhead=odiamond, label="first/last", constraint=false];
+    "Edge"            -> BasicBlock         [style=dashed, arrowhead=vee, constraint=false];
+    AnalysisPass      -> ControlFlowGraph   [style=dashed, arrowhead=vee, label="分析"];
+    GraphWriter       -> ControlFlowGraph   [style=dashed, arrowhead=vee, label="读取"];
+
+    /* ---- 布局约束：六层纵向堆叠 ---- */
+    BinaryFile         -> ElfHeaderView      [style=invis, weight=10];
+    ElfHeaderView      -> InstructionDecoder [style=invis, weight=10];
+    InstructionDecoder -> BasicBlockBuilder  [style=invis, weight=10];
+    BasicBlockBuilder  -> AnalysisPass       [style=invis, weight=10];
+    AnalysisPass       -> GraphWriter        [style=invis, weight=10];
+}
