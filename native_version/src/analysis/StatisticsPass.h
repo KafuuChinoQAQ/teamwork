@@ -9,11 +9,11 @@
 
 #include <cstddef>
 
-#include "analysis/AnalysisPass.h"
+#include "analysis/CFGAnalysisPass.h"
 
 class ControlFlowGraph;
 
-class StatisticsPass : public AnalysisPass {
+class StatisticsPass : public CFGAnalysisPass {
 public:
     struct Stats {
         size_t instructions;         /* 指令总数             */

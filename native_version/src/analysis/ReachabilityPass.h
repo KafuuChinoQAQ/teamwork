@@ -10,9 +10,9 @@
 
 #include <cstddef>
 
-#include "analysis/AnalysisPass.h"
+#include "analysis/CFGAnalysisPass.h"
 
-class ReachabilityPass : public AnalysisPass {
+class ReachabilityPass : public CFGAnalysisPass {
 public:
     ReachabilityPass();
 

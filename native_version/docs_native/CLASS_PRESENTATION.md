@@ -169,19 +169,36 @@ dot -Tpng classify.dot -o classify.png && xdg-open classify.png
 
 ### Q8：哪些地方体现了继承和多态？
 
-> "六组继承：
+> "六组继承，其中两条是**三级继承**：
+>
+> 第一条是解码器：
+> `InstructionDecoder`（任意架构的接口）
+> → `X86InstructionDecoder`（x86 家族共有机制：legacy 前缀、ModRM、SIB、
+> 位移、立即数解析）
+> → `X86_64Decoder`（长模式特有：REX 前缀、64 位寄存器扩展）。
+> 中间层的划分依据是**指令编码格式的适用范围** ——
+> x86-16/32/64 共享同一套字节组织方式，差别只在寄存器扩展，
+> 所以格式解析可以固定在中间层，加新架构模式时只实现差异部分。
+>
+> 第二条是分析 Pass：
+> `AnalysisPass`（任意分析的接口）
+> → `CFGAnalysisPass`（以 CFG 为对象的分析族：输入校验、出边遍历、通用统计）
+> → 可达性 / 循环提示 / 统计三个具体 Pass。
+> 中间层的划分依据是**输入契约** —— 本族分析都要求 CFG 非空，
+> 都要按 from 过滤出边，把这些收口到中间层，各 Pass 就不必各写一套。
+>
+> 另外四条是两级继承：
 > `BinaryFile` ← `MappedBinaryFile`、
-> `InstructionDecoder` ← `X86_64Decoder`、
 > `BasicBlockBuilder` ← `LinearBasicBlockBuilder`、
 > `EdgeAnalyzer` ← `X86EdgeAnalyzer`、
-> `AnalysisPass` ← 三个 Pass、
 > `GraphWriter` ← `DotGraphWriter`/`TextWriter`。
 >
 > 而且多态是用在实处，不是摆着看的：
-> 比如 `InstructionStream` 只认识 `InstructionDecoder*`，
-> 换一个架构只要换派生类；
-> `endsBlock()` 被派生类重写后，`ret` 也成了基本块的结束条件，
-> 划分结果因此不同；main 里遍历 `AnalysisPass*` 数组，
+> `InstructionStream` 只认识最顶层的 `InstructionDecoder*`，
+> 实际对象却可以是三级链最底层的 `X86_64Decoder` ——
+> **中间那层对调用方完全透明**，这正是继承层次能随需求加深、
+> 而上层代码一行不改的原因。
+> main 里遍历 `AnalysisPass*` 数组驱动三级继承链上的三个 Pass，
 > 新增分析不用改主流程。"
 
 ### Q9：如果二进制被 strip 了怎么办？
@@ -210,4 +227,5 @@ dot -Tpng classify.dot -o classify.png && xdg-open classify.png
 
 1. **输入** ELF 文件和函数名，**输出** Graphviz 控制流图，**全程不调用外部程序**；
 2. **四步**：ELF 解析定位函数 → 自己解码机器码 → Leader 法划块 → 按块尾指令连边；
-3. **六组继承**，每层都是抽象基类加派生类，main 里用基类指针驱动。
+3. **六组继承，其中两条是三级**（解码器、分析 Pass），
+   但 main 只用**最顶层**的基类指针驱动 —— 中间层对调用方透明。

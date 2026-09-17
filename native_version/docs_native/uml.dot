@@ -9,7 +9,7 @@
 digraph UML {
     rankdir=LR;   /* 横向布局：六层从左到右展开，整体接近方形，便于在 A4 上阅读 */
     graph [fontname="Droid Sans Fallback", fontsize=14, labelloc="t",
-           label="elfcfg UML 类图（native 版本，6 层 / 15 组继承）\n", bgcolor="white",
+           label="elfcfg UML 类图（6 层结构 / 两条三级继承链）\n", bgcolor="white",
            nodesep=0.28, ranksep=0.42, compound=true];
     node  [shape=plaintext, fontname="Helvetica", fontsize=9];
     edge  [fontname="Droid Sans Fallback", fontsize=8, color="#444444"];
@@ -91,9 +91,14 @@ digraph UML {
           <TR><TD ALIGN="LEFT"><I>+ decode(code, remain, addr, out)</I><BR ALIGN="LEFT"/><I>+ name() / lastError()</I></TD></TR>
         </TABLE>>];
 
+        X86InstructionDecoder [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="#f2f7ff">
+          <TR><TD BGCOLOR="#dde7f5"><I>&lt;&lt;abstract&gt;&gt;</I> <B>X86InstructionDecoder</B></TD></TR>
+          <TR><TD ALIGN="LEFT"><I>+ modeName() : const char*</I><BR ALIGN="LEFT"/># parsePrefixes(code, n, f)<BR ALIGN="LEFT"/># parseModRM(code, n, pos, f)<BR ALIGN="LEFT"/># parseImmediate(code, n, pos, f)<BR ALIGN="LEFT"/># classify / buildMnemonic<BR ALIGN="LEFT"/># buildOperands / resolveControlFlow</TD></TR>
+        </TABLE>>];
+
         X86_64Decoder [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
           <TR><TD BGCOLOR="#c9dcf0"><B>X86_64Decoder</B></TD></TR>
-          <TR><TD ALIGN="LEFT">+ decode(...)<BR ALIGN="LEFT"/>- parsePrefixes / parseModRM<BR ALIGN="LEFT"/>- parseImmediate<BR ALIGN="LEFT"/>- buildOperands / resolveControlFlow</TD></TR>
+          <TR><TD ALIGN="LEFT">+ decode(...)<BR ALIGN="LEFT"/>- parseRex(...)<BR ALIGN="LEFT"/>&lt;&lt;只在长模式下存在&gt;&gt;</TD></TR>
         </TABLE>>];
 
         X86OpcodeTable [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
@@ -163,6 +168,11 @@ digraph UML {
           <TR><TD ALIGN="LEFT"><I>+ name() / description()</I><BR ALIGN="LEFT"/><I>+ run(cfg) : bool</I></TD></TR>
         </TABLE>>];
 
+        CFGAnalysisPass [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="#f2f7ff">
+          <TR><TD BGCOLOR="#dde7f5"><I>&lt;&lt;abstract&gt;&gt;</I> <B>CFGAnalysisPass</B></TD></TR>
+          <TR><TD ALIGN="LEFT"># validateCFG(cfg, name)<BR ALIGN="LEFT"/># firstOutEdge(cfg, b)<BR ALIGN="LEFT"/># nextOutEdge(e, b)<BR ALIGN="LEFT"/># countInstructions(cfg)</TD></TR>
+        </TABLE>>];
+
         ReachabilityPass [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" BGCOLOR="white">
           <TR><TD BGCOLOR="#c9dcf0"><B>ReachabilityPass</B></TD></TR>
           <TR><TD ALIGN="LEFT">+ run(cfg)<BR ALIGN="LEFT"/>+ reachableCount()</TD></TR>
@@ -207,12 +217,14 @@ digraph UML {
 
     /* ================= 继承关系（空心三角） ================= */
     MappedBinaryFile -> BinaryFile         [arrowhead=onormal, penwidth=1.5];
-    X86_64Decoder    -> InstructionDecoder [arrowhead=onormal, penwidth=1.5];
+    X86InstructionDecoder -> InstructionDecoder [arrowhead=onormal, penwidth=1.5];
+    X86_64Decoder          -> X86InstructionDecoder [arrowhead=onormal, penwidth=1.5];
     LinearBBB        -> BasicBlockBuilder  [arrowhead=onormal, penwidth=1.5];
     X86EdgeAnalyzer  -> EdgeAnalyzer       [arrowhead=onormal, penwidth=1.5];
-    ReachabilityPass -> AnalysisPass       [arrowhead=onormal, penwidth=1.5];
-    LoopHintPass     -> AnalysisPass       [arrowhead=onormal, penwidth=1.5];
-    StatisticsPass   -> AnalysisPass       [arrowhead=onormal, penwidth=1.5];
+    CFGAnalysisPass  -> AnalysisPass       [arrowhead=onormal, penwidth=1.5];
+    ReachabilityPass -> CFGAnalysisPass    [arrowhead=onormal, penwidth=1.5];
+    LoopHintPass     -> CFGAnalysisPass    [arrowhead=onormal, penwidth=1.5];
+    StatisticsPass   -> CFGAnalysisPass    [arrowhead=onormal, penwidth=1.5];
     DotGraphWriter   -> GraphWriter        [arrowhead=onormal, penwidth=1.5];
     TextWriter       -> GraphWriter        [arrowhead=onormal, penwidth=1.5];
 

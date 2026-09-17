@@ -21,8 +21,7 @@ bool ReachabilityPass::run(ControlFlowGraph *cfg)
     reachableCount_   = 0;
     unreachableCount_ = 0;
 
-    if (!cfg || cfg->isEmpty()) {
-        logError("ReachabilityPass: CFG 为空");
+    if (!validateCFG(cfg, "ReachabilityPass")) {
         return false;
     }
 
@@ -51,8 +50,7 @@ bool ReachabilityPass::run(ControlFlowGraph *cfg)
         head++;
 
         /* 扫描所有以 b 为起点的边 */
-        for (Edge *e = cfg->edges(); e != NULL; e = e->next) {
-            if (e->from != b) continue;
+        for (Edge *e = firstOutEdge(cfg, b); e != NULL; e = nextOutEdge(e, b)) {
             if (e->to == NULL) continue;              /* 间接跳转等未解析的边 */
             if (e->to->reachable) continue;
 

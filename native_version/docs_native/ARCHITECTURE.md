@@ -49,9 +49,9 @@ GraphWriter
 |----|------|------|--------|
 | ① 基础设施层 | `src/core/` | 文件映射、日志、内存池、容器 | `BinaryFile` / `MappedBinaryFile`、`Log`、`MemoryArena`、`SimpleVector<T>` |
 | ② ELF 解析层 | `src/elf/` | 把字节流解释成 ELF 结构 | `ElfHeaderView`、`SectionTable`、`StringTable`、`SymbolTable`、`FunctionTable`、`ElfParser` |
-| ③ 指令解码层 | `src/arch/`、`src/arch/x86/` | 机器码 → Instruction | `Instruction`、`InstructionDecoder`、`InstructionStream`、`X86_64Decoder`、`X86OpcodeTable` |
+| ③ 指令解码层 | `src/arch/`、`src/arch/x86/` | 机器码 → Instruction | `Instruction`、`InstructionDecoder`、`X86InstructionDecoder`、`X86_64Decoder`、`X86OpcodeTable` |
 | ④ CFG 层 | `src/cfg/` | 指令 → 块 → 边 → 图 | `BasicBlock`、`Edge`、`ControlFlowGraph`、`BasicBlockBuilder`、`EdgeAnalyzer` |
-| ⑤ 分析层 | `src/analysis/` | 在 CFG 上做分析 | `AnalysisPass`、`ReachabilityPass`、`LoopHintPass`、`StatisticsPass` |
+| ⑤ 分析层 | `src/analysis/` | 在 CFG 上做分析 | `AnalysisPass`、`CFGAnalysisPass`、`ReachabilityPass`、`LoopHintPass`、`StatisticsPass` |
 | ⑥ 输出层 | `src/output/` | CFG → 文本/图形 | `GraphWriter`、`DotGraphWriter`、`TextWriter` |
 
 **依赖方向严格单向**：①←②←③←④←⑤/⑥。
@@ -66,7 +66,8 @@ BinaryFile (core/BinaryFile.h)                      抽象基类：open/close/da
    └── MappedBinaryFile                              mmap 实现
 
 InstructionDecoder (arch/InstructionDecoder.h)       抽象基类：decode()
-   └── X86_64Decoder (arch/x86/X86Decoder.h)          x86-64 实现
+   └── X86InstructionDecoder (arch/x86/)             抽象中间层：x86 家族共有机制
+         └── X86_64Decoder (arch/x86/X86Decoder.h)   长模式具体实现（REX 等）
 
 BasicBlockBuilder (cfg/BasicBlockBuilder.h)          抽象基类：build()
    └── LinearBasicBlockBuilder                        Leader 法实现
@@ -77,9 +78,10 @@ EdgeAnalyzer (cfg/EdgeAnalyzer.h)                    抽象基类：analyze()
                                                      （虚函数 analyzeBlock 被重写）
 
 AnalysisPass (analysis/AnalysisPass.h)               抽象基类：run()
-   ├── ReachabilityPass                               可达性
-   ├── LoopHintPass                                   向后跳转边
-   └── StatisticsPass                                 统计
+   ├── CFGAnalysisPass (analysis/)                   抽象中间层：CFG 分析共性
+   │     ├── ReachabilityPass                         可达性
+   │     ├── LoopHintPass                             向后跳转边
+   │     └── StatisticsPass                           统计
    └── FunctionAnalysis / DataFlowPass                后续实验接口骨架
          ├── StackAnalysis / DangerousCallAnalysis / MemoryAccessAnalysis
          └── TaintAnalysis
@@ -106,7 +108,9 @@ passes[2] = &statistics;
 
 **多态不是形式上的**：
 
-1. `InstructionStream` 只认识 `InstructionDecoder*`，换架构只需换派生类；
+1. `InstructionStream` 只认识 `InstructionDecoder*`（最顶层），
+   实际对象可以是三级继承链最底层的 `X86_64Decoder` ——
+   中间层 `X86InstructionDecoder` 对调用方完全透明；
 2. `BasicBlockBuilder::endsBlock()` 基类只认跳转，派生类把 `ret/hlt`
    也定义为结束条件 —— 划分结果因此不同；
 3. `EdgeAnalyzer::analyzeBlock()` 基类只连顺序边，派生类加入跳转语义；
@@ -176,7 +180,7 @@ src/
             ElfParser.h/.cpp      总入口
 
   arch/     Instruction.h         指令结构 + 类型枚举 + 解码字段
-            InstructionDecoder.h  解码器抽象基类
+            InstructionDecoder.h  解码器抽象基类（最顶层）
             InstructionStream.h/.cpp  指令流构建
 
   arch/x86/ X86OpcodeTable.h/.cpp opcode 表 + 分组指令映射
@@ -188,7 +192,8 @@ src/
             BasicBlockBuilder.h/.cpp   基本块划分
             EdgeAnalyzer.h/.cpp        执行关系识别
 
-  analysis/ AnalysisPass.h        抽象基类 + 后续实验接口骨架
+  analysis/ AnalysisPass.h        抽象基类（最顶层）+ 后续实验接口骨架
+            CFGAnalysisPass.h/.cpp  CFG 分析中间层：输入校验 / 出边遍历 / 统计
             ReachabilityPass.h/.cpp
             LoopHintPass.h/.cpp
             StatisticsPass.h/.cpp

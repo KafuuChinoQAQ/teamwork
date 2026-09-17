@@ -16,8 +16,7 @@ bool LoopHintPass::run(ControlFlowGraph *cfg)
 {
     hintCount_ = 0;
 
-    if (!cfg || cfg->isEmpty()) {
-        logError("LoopHintPass: CFG 为空");
+    if (!validateCFG(cfg, "LoopHintPass")) {
         return false;
     }
 

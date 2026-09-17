@@ -162,7 +162,19 @@ classDiagram
         -buildOperands(ins, entry) void
         -resolveControlFlow(ins, entry) void
     }
-    InstructionDecoder <|-- X86_64Decoder : 继承
+    class X86InstructionDecoder {
+        <<abstract>>
+        +modeName() const char*
+        #parsePrefixes(code, n, f) size_t
+        #parseModRM(code, n, pos, f) long
+        #parseImmediate(code, n, pos, f, size) long
+        #classify(ins, entry) void
+        #buildMnemonic(ins, entry) void
+        #buildOperands(ins, entry) void
+        #resolveControlFlow(ins, entry) void
+    }
+    InstructionDecoder <|-- X86InstructionDecoder : 继承
+    X86InstructionDecoder <|-- X86_64Decoder : 继承
 
     class Instruction {
         +uint64_t address
@@ -294,9 +306,17 @@ classDiagram
         <<abstract>>
         +solve(cfg) int
     }
-    AnalysisPass <|-- ReachabilityPass
-    AnalysisPass <|-- LoopHintPass
-    AnalysisPass <|-- StatisticsPass
+    class CFGAnalysisPass {
+        <<abstract>>
+        #validateCFG(cfg, name) bool
+        #firstOutEdge(cfg, b) Edge*
+        #nextOutEdge(e, b) Edge*
+        #countInstructions(cfg) size_t
+    }
+    AnalysisPass <|-- CFGAnalysisPass
+    CFGAnalysisPass <|-- ReachabilityPass
+    CFGAnalysisPass <|-- LoopHintPass
+    CFGAnalysisPass <|-- StatisticsPass
     AnalysisPass <|-- FunctionAnalysis : 后续实验接口
     AnalysisPass <|-- DataFlowPass : 后续实验接口
     FunctionAnalysis <|-- StackAnalysis
@@ -324,6 +344,40 @@ classDiagram
     GraphWriter <|-- TextWriter : 继承
     GraphWriter ..> ControlFlowGraph : 读取
 ```
+
+---
+
+## 一·五、两条三级继承链（本次重构新增）
+
+### 指令解码
+
+```
+<<abstract>> InstructionDecoder        任意 CPU 架构的解码接口
+              △
+<<abstract>> X86InstructionDecoder      x86 家族共同机制
+              △
+             X86_64Decoder             x86-64 长模式具体实现
+```
+
+分界依据是**指令编码格式的适用范围**：
+x86-16/32/64 共享同一套字节组织方式（legacy 前缀、ModRM、SIB、位移、
+立即数），差别只在寄存器扩展与默认操作数宽度。把格式解析固定在中间层后，
+新增一个模式（如 `X86_32Decoder`）只需实现 REX 之外的差异部分。
+
+### 分析 Pass
+
+```
+<<abstract>> AnalysisPass              任意分析的通用接口
+              △
+<<abstract>> CFGAnalysisPass           以 CFG 为对象的分析族
+         /     |      \
+  Reachability LoopHint Statistics     具体算法
+```
+
+分界依据是**输入契约与遍历模式**：本族的分析都要求"CFG 非空"这一前提，
+且都要按 `from` 过滤边（边存放在全局链表里）。把这些收口到中间层，
+各 Pass 不必各写一套。将来若加入不基于 CFG 的分析（如只依赖符号表的
+导入表分析），它直接继承 `AnalysisPass` 与本族并列。
 
 ---
 

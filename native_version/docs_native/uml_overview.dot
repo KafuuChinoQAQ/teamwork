@@ -6,7 +6,7 @@
 digraph UMLOverview {
     rankdir=LR;   /* 横向布局：六层从左到右展开，整体接近方形，便于在 A4 上阅读 */
     graph [fontname="Droid Sans Fallback", fontsize=14, labelloc="t",
-           label="elfcfg 类结构总览（6 层 / 15 组继承）\n", bgcolor="white",
+           label="elfcfg 类结构总览（6 层 / 两条三级继承链）\n", bgcolor="white",
            nodesep=0.20, ranksep=0.34];
     node  [shape=box, style="filled,rounded", fontname="Helvetica", fontsize=10,
            fillcolor="white", color="#3b6ea5", penwidth=1.1, height=0.32];
@@ -40,6 +40,7 @@ digraph UMLOverview {
         label="③ arch 指令解码层"; style="rounded,dashed";
         color="#aa8888"; fontcolor="#664444"; fontsize=10;
         InstructionDecoder[label="«abstract»\nInstructionDecoder", fillcolor="#dde7f5"];
+        X86InstructionDecoder[label="«abstract»\nX86InstructionDecoder", fillcolor="#f2f7ff"];
         X86_64Decoder     [label="X86_64Decoder"];
         X86OpcodeTable    [label="X86OpcodeTable"];
         InstructionStream [label="InstructionStream"];
@@ -64,6 +65,7 @@ digraph UMLOverview {
         label="⑤ analysis 分析层"; style="rounded,dashed";
         color="#88bb88"; fontcolor="#446644"; fontsize=10;
         AnalysisPass    [label="«abstract»\nAnalysisPass", fillcolor="#dde7f5"];
+        CFGAnalysisPass [label="«abstract»\nCFGAnalysisPass", fillcolor="#f2f7ff"];
         ReachabilityPass[label="ReachabilityPass"];
         LoopHintPass    [label="LoopHintPass"];
         StatisticsPass  [label="StatisticsPass"];
@@ -83,12 +85,14 @@ digraph UMLOverview {
 
     /* ---- 继承（实线空心三角） ---- */
     MappedBinaryFile -> BinaryFile         [arrowhead=onormal, penwidth=1.6];
-    X86_64Decoder    -> InstructionDecoder [arrowhead=onormal, penwidth=1.6];
+    X86InstructionDecoder -> InstructionDecoder    [arrowhead=onormal, penwidth=1.6];
+    X86_64Decoder         -> X86InstructionDecoder  [arrowhead=onormal, penwidth=1.6];
     LinearBBB        -> BasicBlockBuilder  [arrowhead=onormal, penwidth=1.6];
     X86EdgeAnalyzer  -> EdgeAnalyzer       [arrowhead=onormal, penwidth=1.6];
-    ReachabilityPass -> AnalysisPass       [arrowhead=onormal, penwidth=1.6];
-    LoopHintPass     -> AnalysisPass       [arrowhead=onormal, penwidth=1.6];
-    StatisticsPass   -> AnalysisPass       [arrowhead=onormal, penwidth=1.6];
+    CFGAnalysisPass  -> AnalysisPass       [arrowhead=onormal, penwidth=1.6];
+    ReachabilityPass -> CFGAnalysisPass    [arrowhead=onormal, penwidth=1.6];
+    LoopHintPass     -> CFGAnalysisPass    [arrowhead=onormal, penwidth=1.6];
+    StatisticsPass   -> CFGAnalysisPass    [arrowhead=onormal, penwidth=1.6];
     FunctionAnalysis -> AnalysisPass       [arrowhead=onormal, penwidth=1.6];
     DataFlowPass     -> AnalysisPass       [arrowhead=onormal, penwidth=1.6];
     FutureImpl       -> FunctionAnalysis   [arrowhead=onormal, penwidth=1.2, style=dashed];

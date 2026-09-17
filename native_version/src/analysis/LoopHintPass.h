@@ -20,11 +20,11 @@
 
 #include <cstddef>
 
-#include "analysis/AnalysisPass.h"
+#include "analysis/CFGAnalysisPass.h"
 
 class ControlFlowGraph;
 
-class LoopHintPass : public AnalysisPass {
+class LoopHintPass : public CFGAnalysisPass {
 public:
     LoopHintPass();
 

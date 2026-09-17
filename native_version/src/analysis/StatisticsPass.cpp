@@ -18,8 +18,7 @@ bool StatisticsPass::run(ControlFlowGraph *cfg)
 {
     memset(&stats_, 0, sizeof(stats_));
 
-    if (!cfg || cfg->isEmpty()) {
-        logError("StatisticsPass: CFG 为空");
+    if (!validateCFG(cfg, "StatisticsPass")) {
         return false;
     }
 
