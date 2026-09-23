@@ -36,13 +36,15 @@
 
 /* 命令行子命令 */
 enum Command {
-    CMD_CFG,          /* 默认：输出 Graphviz DOT（待阶段 9 接通） */
+    CMD_CFG,          /* 默认：输出 Graphviz DOT */
     CMD_INFO,         /* --info    : ELF 概览          */
     CMD_SECTIONS,     /* --sections: 节表              */
     CMD_SYMBOLS,      /* --symbols : 符号表 / 函数表   */
     CMD_DISASM,       /* --disasm  : 自己的反汇编结果 */
     CMD_SUMMARY,      /* --summary : 函数与 CFG 统计  */
-    CMD_TEXT          /* --text    : 文本形式 CFG     */
+    CMD_TEXT,         /* --text    : 文本形式 CFG     */
+    CMD_BATCH,        /* --batch   : 批量分析多个文件 */
+    CMD_DIFF          /* --diff    : 对比两个文件     */
 };
 
 static void printUsage(const char *prog)
@@ -57,12 +59,14 @@ static void printUsage(const char *prog)
         "  %s --symbols demo                  查看符号表 / 函数表\n"
         "  %s --disasm demo classify          查看自己的反汇编结果\n"
         "  %s --summary demo classify         查看统计信息\n"
+        "  %s --batch classify a.elf b.elf    批量分析多个文件\n"
+        "  %s --diff  classify a.elf b.elf    对比两个文件中的同名函数\n"
         "\n"
         "通用选项:\n"
         "  --debug            打开调试日志\n"
         "  --log=<级别>       error | warn | info | debug\n"
         "  -h, --help         显示本帮助\n",
-        prog, prog, prog, prog, prog, prog, prog);
+        prog, prog, prog, prog, prog, prog, prog, prog, prog);
 }
 
 /* 打印函数定位结果 */
@@ -91,6 +95,178 @@ static void printFunctionInfo(const FunctionInfo &fn)
     }
 }
 
+/* ---------------------------------------------------------------------------
+ * 批处理：对多个 ELF 文件分析同一个函数，输出一张对比表
+ * ---------------------------------------------------------------------------
+ * 批量场景下反复构造/析构解析器没有必要，因此这里**复用同一个 ElfParser**，
+ * 循环中依次 open 每个文件。
+ *
+ * 对比表在循环全部结束后统一打印 —— 这样输出整齐，也便于脚本二次解析；
+ * 为此循环中先把每个文件里目标函数"记下来"，最后一次性呈现对比。
+ * ------------------------------------------------------------------------- */
+#define kMaxBatchArgs 32          /* 命令行位置参数上限（函数名 + 文件） */
+#define kMaxBatch     30          /* 单次批处理最多分析的文件数          */
+
+struct BatchItem {
+    const char         *path;
+    const FunctionInfo *fn;      /* 目标函数条目（取自函数表视图） */
+};
+
+static int runBatch(const char *funcName, const char *const *files, int nfiles)
+{
+    ElfParser parser;                    /* 复用同一个解析器 */
+    BatchItem items[kMaxBatch];
+    int       n    = 0;
+    int       nOk  = 0;
+    int       nHit = 0;
+
+    printf("批量分析：函数 '%s'，共 %d 个文件\n", funcName, nfiles);
+
+    for (int i = 0; i < nfiles && n < kMaxBatch; i++) {
+        BatchItem it;
+        it.path = files[i];
+        it.fn   = NULL;
+
+        if (!parser.open(files[i])) {
+            logWarn("跳过 %s：%s", files[i], parser.lastError());
+            items[n++] = it;
+            continue;
+        }
+        nOk++;
+
+        /* 记下这个文件里目标函数的条目，留到循环结束后统一对比 */
+        it.fn = parser.functions().findByName(funcName);
+        if (it.fn) nHit++;
+
+        items[n++] = it;
+    }
+
+    /* ---- 循环结束后，统一打印对比表 ---- */
+    printf("\n%-30s %-18s %8s %10s   %s\n",
+           "文件", "函数入口地址", "大小", "机器码首字节", "机器码指针");
+    printf("----------------------------------------------------------------------------------\n");
+
+    for (int i = 0; i < n; i++) {
+        const BatchItem   *it = &items[i];
+        const FunctionInfo *f = it->fn;
+
+        if (!f) {
+            printf("%-30s %s\n", it->path, "(该文件没有此函数 / 解析失败)");
+            continue;
+        }
+        printf("%-30s 0x%-16llx %8llu %10s   %p\n",
+               it->path,
+               (unsigned long long)f->virtualAddress,
+               (unsigned long long)f->size,
+               (f->code && f->size) ? "——" : "(无)",
+               (const void *)f->code);
+    }
+
+    printf("\n汇总：解析成功 %d 个，定位到 '%s' 的 %d 个（共 %d 个文件）\n",
+           nOk, funcName, nHit, nfiles);
+
+    /* ---- 逐个校验每个函数的机器码是否仍可读 ---- */
+    printf("\n机器码校验（读取各函数首字节）：\n");
+    for (int i = 0; i < n; i++) {
+        const FunctionInfo *f = items[i].fn;
+        if (!f || !f->code || f->size == 0) continue;
+
+        printf("  %-30s 首字节 = %02x %02x %02x %02x\n",
+               items[i].path,
+               f->code[0], f->code[1], f->code[2], f->code[3]);
+    }
+    printf("\n批处理完成。\n");
+    return 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * 文件对比：比较同一个函数在两个 ELF 文件中的差异
+ * ---------------------------------------------------------------------------
+ * 典型用途是「同一程序的两个构建版本之间，某个函数有没有变化」——
+ * 例如回归测试时确认改动只影响了预期的那几个函数。
+ *
+ * 实现上先解析基准文件、记下目标函数与几个概览量，
+ * 再解析对比文件，最后把两者并排输出。
+ * ------------------------------------------------------------------------- */
+static int runDiff(const char *funcName, const char *fileA, const char *fileB)
+{
+    ElfParser parser;
+
+    /* ---- 基准文件 ---- */
+    if (!parser.open(fileA)) {
+        logError("无法解析基准文件 %s：%s", fileA, parser.lastError());
+        return 1;
+    }
+    const FunctionInfo *fa = parser.functions().findByName(funcName);
+    if (!fa) {
+        logError("基准文件 %s 中没有函数 '%s'", fileA, funcName);
+        return 1;
+    }
+    /* 记下基准文件的信息，供后面并排输出 */
+    const FunctionInfo *base   = fa;
+    unsigned            nSecA  = parser.sections().count();
+    uint64_t            entryA = parser.header().entry();
+
+    printf("基准文件 %s\n", fileA);
+    printf("  函数 %s @ 0x%llx，%llu 字节，节数量 %u，入口 0x%llx\n",
+           base->name, (unsigned long long)base->virtualAddress,
+           (unsigned long long)base->size, nSecA,
+           (unsigned long long)entryA);
+
+    /* ---- 对比文件（同一个解析器接着解析）---- */
+    if (!parser.open(fileB)) {
+        logError("无法解析对比文件 %s：%s", fileB, parser.lastError());
+        return 1;
+    }
+    const FunctionInfo *fb = parser.functions().findByName(funcName);
+    if (!fb) {
+        logError("对比文件 %s 中没有函数 '%s'", fileB, funcName);
+        return 1;
+    }
+    printf("\n对比文件 %s\n", fileB);
+    printf("  函数 %s @ 0x%llx，%llu 字节，节数量 %u，入口 0x%llx\n",
+           fb->name, (unsigned long long)fb->virtualAddress,
+           (unsigned long long)fb->size, parser.sections().count(),
+           (unsigned long long)parser.header().entry());
+
+    /* ---- 并排输出差异 ---- */
+    printf("\n%-14s %-18s %10s %10s\n", "来源", "函数地址", "大小", "机器码");
+    printf("----------------------------------------------------------------\n");
+    printf("%-14s 0x%-16llx %10llu %10s\n", "基准",
+           (unsigned long long)base->virtualAddress,
+           (unsigned long long)base->size,
+           (base->code && base->size) ? "可读" : "无");
+    printf("%-14s 0x%-16llx %10llu %10s\n", "对比",
+           (unsigned long long)fb->virtualAddress,
+           (unsigned long long)fb->size,
+           (fb->code && fb->size) ? "可读" : "无");
+
+    /* ---- 结论 ---- */
+    if (base->size == fb->size) {
+        printf("\n结论：两个版本中该函数大小相同（%llu 字节）\n",
+               (unsigned long long)fb->size);
+    } else {
+        printf("\n结论：大小相差 %+lld 字节\n",
+               (long long)fb->size - (long long)base->size);
+    }
+
+    /* 机器码逐字节比对（大小相同才有意义） */
+    if (base->code && fb->code && base->size == fb->size && base->size > 0) {
+        size_t differ = 0;
+        for (size_t i = 0; i < (size_t)base->size; i++) {
+            if (base->code[i] != fb->code[i]) differ++;
+        }
+        printf("机器码：%lu / %llu 字节不同\n",
+               (unsigned long)differ, (unsigned long long)base->size);
+        printf("首字节：基准 %02x %02x %02x %02x   对比 %02x %02x %02x %02x\n",
+               base->code[0], base->code[1], base->code[2], base->code[3],
+               fb->code[0], fb->code[1], fb->code[2], fb->code[3]);
+    }
+
+    printf("\n对比完成。\n");
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     logSetPrefix("elfcfg");
@@ -98,6 +274,10 @@ int main(int argc, char **argv)
     const char *elfPath  = NULL;
     const char *funcName = NULL;
     Command     command  = CMD_CFG;
+
+    /* 批处理的位置参数：第 1 个是函数名，其余是文件 */
+    const char *posArg[kMaxBatchArgs];
+    int         posCount = 0;
 
     /* ---- 参数解析 ---- */
     for (int i = 1; i < argc; ++i) {
@@ -126,6 +306,10 @@ int main(int argc, char **argv)
             command = CMD_TEXT;
         } else if (strcmp(a, "--cfg") == 0) {
             command = CMD_CFG;
+        } else if (strcmp(a, "--batch") == 0) {
+            command = CMD_BATCH;
+        } else if (strcmp(a, "--diff") == 0) {
+            command = CMD_DIFF;
         } else if (strcmp(a, "-h") == 0 || strcmp(a, "--help") == 0) {
             printUsage(argv[0]);
             return 0;
@@ -133,6 +317,12 @@ int main(int argc, char **argv)
             logError("未知选项：%s", a);
             printUsage(argv[0]);
             return 1;
+        } else if (command == CMD_BATCH || command == CMD_DIFF) {
+            if (posCount >= kMaxBatchArgs) {
+                logError("批处理参数过多（上限 %d）", kMaxBatchArgs);
+                return 1;
+            }
+            posArg[posCount++] = a;
         } else if (!elfPath) {
             elfPath = a;
         } else if (!funcName) {
@@ -142,6 +332,23 @@ int main(int argc, char **argv)
             printUsage(argv[0]);
             return 1;
         }
+    }
+
+    if (command == CMD_DIFF) {
+        if (posCount < 3) {
+            logError("对比用法：%s --diff <函数名> <ELF文件A> <ELF文件B>", argv[0]);
+            return 1;
+        }
+        return runDiff(posArg[0], posArg[1], posArg[2]);
+    }
+
+    if (command == CMD_BATCH) {
+        if (posCount < 2) {
+            logError("批处理用法：%s --batch <函数名> <ELF文件> [ELF文件 ...]",
+                     argv[0]);
+            return 1;
+        }
+        return runBatch(posArg[0], &posArg[1], posCount - 1);
     }
 
     if (!elfPath) {
