@@ -1,9 +1,3 @@
-/* ============================================================================
- * core/BinaryFile.cpp —— mmap 实现
- * ----------------------------------------------------------------------------
- * 使用的 Linux/POSIX 接口：
- *      open(2) fstat(2) mmap(2) munmap(2) close(2)
- * ========================================================================== */
 #include "core/BinaryFile.h"
 #include "core/Log.h"
 
@@ -17,9 +11,6 @@
 #include <sys/mman.h>
 #include <sys/types.h>
 
-/* ---------------------------------------------------------------------------
- * MappedBinaryFile
- * ------------------------------------------------------------------------- */
 MappedBinaryFile::MappedBinaryFile()
     : fd_(-1), map_(NULL), size_(0), isOpen_(false)
 {
@@ -28,7 +19,7 @@ MappedBinaryFile::MappedBinaryFile()
 
 MappedBinaryFile::~MappedBinaryFile()
 {
-    closeFile();                          /* 析构时确保资源释放 */
+    closeFile();
 }
 
 bool MappedBinaryFile::openFile(const char *path)
@@ -47,14 +38,12 @@ bool MappedBinaryFile::openFile(const char *path)
         return false;
     }
 
-    /* ---- 1. open ---- */
     int fd = open(path, O_RDONLY);
     if (fd < 0) {
         logError("BinaryFile: 无法打开 '%s'：%s", path, strerror(errno));
         return false;
     }
 
-    /* ---- 2. fstat：拿到文件大小 ---- */
     struct stat st;
     if (fstat(fd, &st) != 0) {
         logError("BinaryFile: fstat('%s') 失败：%s", path, strerror(errno));
@@ -74,7 +63,6 @@ bool MappedBinaryFile::openFile(const char *path)
 
     size_t fileSize = (size_t)st.st_size;
 
-    /* ---- 3. mmap ---- */
     void *m = mmap(NULL, fileSize, PROT_READ, MAP_PRIVATE, fd, 0);
     if (m == MAP_FAILED) {
         logError("BinaryFile: mmap('%s', %lu 字节) 失败：%s",
@@ -83,7 +71,6 @@ bool MappedBinaryFile::openFile(const char *path)
         return false;
     }
 
-    /* 提示内核我们将会顺序＋随机混合访问（可选，失败不影响正确性） */
     (void)madvise(m, fileSize, MADV_WILLNEED);
 
     fd_     = fd;

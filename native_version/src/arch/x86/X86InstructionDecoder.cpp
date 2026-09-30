@@ -1,20 +1,3 @@
-/* ============================================================================
- * arch/x86/X86InstructionDecoder.cpp —— x86 家族解码器（抽象中间层）实现
- * ----------------------------------------------------------------------------
- * 本文件承载 x86 家族（16/32/64 位模式）**共享**的解码机制：
- *
- *   [Legacy Prefix]* Opcode [ModRM [SIB [Disp]]] [Imm]
- *
- * 长度计算的依据（三种模式一致）：
- *   - opcode 决定是否存在 ModRM；
- *   - ModRM.mod 与 r/m 决定是否存在 SIB 和位移长度；
- *   - opcode 与前缀共同决定立即数长度。
- *
- * 因此长度是**推导**出来的，不依赖任何预设指令串。
- *
- * 模式专有的部分（x86-64 的 REX 前缀、64 位寄存器扩展等）留在派生类
- * X86_64Decoder 中，本层不出现任何长模式专有概念。
- * ========================================================================== */
 #include "arch/x86/X86InstructionDecoder.h"
 #include "arch/x86/X86OpcodeTable.h"
 #include "core/MemoryArena.h"
@@ -24,12 +7,8 @@
 #include <cstdarg>
 #include <cstring>
 
-/* x86 指令最大长度（Intel SDM 规定 15 字节） */
 static const size_t kMaxInstructionLength = 15;
 
-/* ---------------------------------------------------------------------------
- * 寄存器名表：[大小行][编号]，大小行顺序为 1/2/4/8 字节
- * ------------------------------------------------------------------------- */
 static const char *kRegName[4][16] = {
     { "al", "cl", "dl", "bl", "spl", "bpl", "sil", "dil",
       "r8b", "r9b", "r10b", "r11b", "r12b", "r13b", "r14b", "r15b" },
@@ -41,7 +20,6 @@ static const char *kRegName[4][16] = {
       "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15" }
 };
 
-/* 没有 REX 前缀时，8 位寄存器 4-7 号是 ah/ch/dh/bh */
 static const char *kReg8Legacy[8] = { "al", "cl", "dl", "bl", "ah", "ch", "dh", "bh" };
 
 static const char *registerName(int index, int sizeBytes, int hasRex)
@@ -60,7 +38,6 @@ static const char *registerName(int index, int sizeBytes, int hasRex)
     return kRegName[row][index];
 }
 
-/* 助记符后缀（ATT 风格）：b/w/l/q */
 static char sizeSuffix(int sizeBytes)
 {
     switch (sizeBytes) {
@@ -72,14 +49,9 @@ static char sizeSuffix(int sizeBytes)
     }
 }
 
-/* ---------------------------------------------------------------------------
- * 操作数大小判定（字节数）
- *   字节版本由 opcode 的最低位决定；否则由 REX.W / 66 前缀决定
- * ------------------------------------------------------------------------- */
 static int operandSizeOf(const X86OpcodeEntry *entry, const DecodedFields *f)
 {
     if (entry->enc == ENC_PLUS_RD || entry->enc == ENC_PLUS_RD_IMM) {
-        /* push/pop 默认 64 位；mov r,imm 由 REX.W 决定 */
     }
 
     if (!entry->isTwoByte) {
@@ -95,7 +67,6 @@ static int operandSizeOf(const X86OpcodeEntry *entry, const DecodedFields *f)
         default:
             break;
         }
-        /* B0-B7：mov r8, imm8 */
         if (entry->enc == ENC_PLUS_RD_IMM8) return 1;
     }
 
@@ -104,9 +75,6 @@ static int operandSizeOf(const X86OpcodeEntry *entry, const DecodedFields *f)
     return 4;
 }
 
-/* ---------------------------------------------------------------------------
- * 内存操作数格式化：AT&T 风格   disp(base,index,scale)
- * ------------------------------------------------------------------------- */
 static void formatMem(const Instruction *ins, char *buf, size_t bufsize)
 {
     const DecodedFields *f = &ins->fields;
@@ -118,17 +86,14 @@ static void formatMem(const Instruction *ins, char *buf, size_t bufsize)
     int         scale = 1;
 
     if (f->hasSIB) {
-        /* SIB.base == 5 且 mod == 0 表示"无基址，仅 disp32" */
         if (!(f->mod == 0 && f->sibBase == 5)) {
             base = registerName((int)f->sibBase + (f->rexB ? 8 : 0), 8, 1);
         }
-        /* SIB.index == 4 表示"无变址" */
         if (f->sibIndex != 4) {
             index = registerName((int)f->sibIndex + (f->rexX ? 8 : 0), 8, 1);
             scale = 1 << f->sibScale;
         }
     } else {
-        /* r/m == 5 且 mod == 0 表示 RIP 相对寻址 */
         if (!(f->mod == 0 && f->rm == 5)) {
             base = registerName((int)f->rm + (f->rexB ? 8 : 0), 8, 1);
         }
@@ -136,7 +101,6 @@ static void formatMem(const Instruction *ins, char *buf, size_t bufsize)
 
     if (base || index) {
         if (f->displacementSize != 0) {
-            /* 位移用十六进制显示，与 objdump 的 AT&T 风格一致 */
             if (f->displacement < 0) {
                 off += snprintf(buf + off, bufsize - (size_t)off, "-0x%x",
                                 (unsigned)(-f->displacement));
@@ -155,7 +119,6 @@ static void formatMem(const Instruction *ins, char *buf, size_t bufsize)
         }
         off += snprintf(buf + off, bufsize - (size_t)off, ")");
     } else {
-        /* 纯位移：rip 相对或绝对 */
         off += snprintf(buf + off, bufsize - (size_t)off, "0x%llx",
                         (unsigned long long)(uint64_t)(int64_t)f->displacement);
         if (f->mod == 0 && !f->hasSIB && f->rm == 5) {
@@ -164,17 +127,13 @@ static void formatMem(const Instruction *ins, char *buf, size_t bufsize)
     }
 }
 
-/* ---------------------------------------------------------------------------
- * 累加器类指令（04/0C/…/3C、A8/A9、05/0D/…/3D）的目标寄存器名
- * 这类指令隐含使用 AL/AX/EAX/RAX，需要按宽度选名
- * ------------------------------------------------------------------------- */
 static const char *accumulatorName(unsigned char opcode, const DecodedFields *f)
 {
     switch (opcode) {
     case 0x04: case 0x0C: case 0x14: case 0x1C:
     case 0x24: case 0x2C: case 0x34: case 0x3C:
     case 0xA8:
-        return "al";                 /* 字节版本 */
+        return "al";
     default:
         break;
     }
@@ -183,7 +142,6 @@ static const char *accumulatorName(unsigned char opcode, const DecodedFields *f)
     return "eax";
 }
 
-/* 格式化 r/m 操作数（寄存器或内存） */
 static void formatRmOperand(const Instruction *ins, char *buf, size_t bufsize,
                             int sizeBytes)
 {
@@ -196,7 +154,6 @@ static void formatRmOperand(const Instruction *ins, char *buf, size_t bufsize,
     }
 }
 
-/* 格式化 ModRM.reg 指定的寄存器 */
 static void formatRegOperand(const Instruction *ins, char *buf, size_t bufsize,
                              int sizeBytes, int useRegField)
 {
@@ -205,15 +162,11 @@ static void formatRegOperand(const Instruction *ins, char *buf, size_t bufsize,
     if (useRegField) {
         index = (int)f->reg + (f->rexR ? 8 : 0);
     } else {
-        /* 寄存器号编码在 opcode 低 3 位（50-5F push/pop、B0-BF mov） */
         index = (int)(f->opcode & 0x07) + (f->rexB ? 8 : 0);
     }
     snprintf(buf, bufsize, "%%%s", registerName(index, sizeBytes, f->hasRex));
 }
 
-/* ---------------------------------------------------------------------------
- * 构造 / 析构
- * ------------------------------------------------------------------------- */
 X86InstructionDecoder::X86InstructionDecoder()
     : decodedCount_(0), errorCount_(0)
 {
@@ -238,9 +191,6 @@ void X86InstructionDecoder::setError(const char *fmt, ...)
     va_end(ap);
 }
 
-/* ---------------------------------------------------------------------------
- * 步骤 1：legacy 前缀
- * ------------------------------------------------------------------------- */
 size_t X86InstructionDecoder::parsePrefixes(const unsigned char *code, size_t remaining,
                                     DecodedFields *f)
 {
@@ -259,18 +209,11 @@ size_t X86InstructionDecoder::parsePrefixes(const unsigned char *code, size_t re
         if (b == 0x66) { f->opsizePrefix   = 1; pos++; continue; }
         if (b == 0x67) { f->addrsizePrefix = 1; pos++; continue; }
 
-        break;      /* 不是前缀，结束 */
+        break;
     }
     return pos;
 }
 
-/* ---------------------------------------------------------------------------
- * 步骤 2：ModRM（可能连带 SIB 与位移）
- *   mod=00: rm=100 → SIB；rm=101 → disp32(RIP相对)；其它无位移
- *   mod=01: disp8
- *   mod=10: disp32
- *   mod=11: 寄存器直接寻址，无位移
- * ------------------------------------------------------------------------- */
 long X86InstructionDecoder::parseModRM(const unsigned char *code, size_t remaining,
                                size_t pos, DecodedFields *f)
 {
@@ -290,7 +233,6 @@ long X86InstructionDecoder::parseModRM(const unsigned char *code, size_t remaini
 
     if (f->mod != 3) {
         if (f->rm == 4) {
-            /* ---- 有 SIB ---- */
             if (pos >= remaining) {
                 setError("SIB 字节缺失");
                 return -1;
@@ -302,9 +244,9 @@ long X86InstructionDecoder::parseModRM(const unsigned char *code, size_t remaini
             f->sibIndex = (s >> 3) & 0x07;
             f->sibBase  = s & 0x07;
 
-            if (f->mod == 0 && f->sibBase == 5) dispSize = 4;   /* 仅 disp32 */
+            if (f->mod == 0 && f->sibBase == 5) dispSize = 4;
         } else if (f->mod == 0 && f->rm == 5) {
-            dispSize = 4;                                       /* RIP 相对 */
+            dispSize = 4;
         }
 
         if (f->mod == 1)      dispSize = 1;
@@ -330,9 +272,6 @@ long X86InstructionDecoder::parseModRM(const unsigned char *code, size_t remaini
     return (long)pos;
 }
 
-/* ---------------------------------------------------------------------------
- * 步骤 3：立即数
- * ------------------------------------------------------------------------- */
 long X86InstructionDecoder::parseImmediate(const unsigned char *code, size_t remaining,
                                    size_t pos, DecodedFields *f, int size)
 {
@@ -376,9 +315,6 @@ long X86InstructionDecoder::parseImmediate(const unsigned char *code, size_t rem
     return (long)(pos + (size_t)size);
 }
 
-/* ---------------------------------------------------------------------------
- * 语义分类：填充 isBranch / isConditional / isCall / isReturn 等标志
- * ------------------------------------------------------------------------- */
 void X86InstructionDecoder::classify(Instruction *ins, const X86OpcodeEntry *entry)
 {
     ins->isBranch      = false;
@@ -398,7 +334,6 @@ void X86InstructionDecoder::classify(Instruction *ins, const X86OpcodeEntry *ent
         ins->isConditional = true;
         break;
     case INST_LOOP:
-        /* loop/loope/loopne/jrcxz 也是条件性控制转移 */
         ins->isBranch      = true;
         ins->isConditional = true;
         break;
@@ -417,9 +352,7 @@ void X86InstructionDecoder::classify(Instruction *ins, const X86OpcodeEntry *ent
         break;
     }
 
-    /* ---- 分组指令的语义修正 ---- */
     if (entry->enc == ENC_GROUP5) {
-        /* FF /2 = 间接 call，/4 = 间接 jmp，/6 = push */
         switch (ins->fields.groupExt) {
         case 2:
             ins->type = INST_CALL; ins->isBranch = true; ins->isCall = true;
@@ -441,9 +374,6 @@ void X86InstructionDecoder::classify(Instruction *ins, const X86OpcodeEntry *ent
     }
 }
 
-/* ---------------------------------------------------------------------------
- * 助记符
- * ------------------------------------------------------------------------- */
 void X86InstructionDecoder::buildMnemonic(Instruction *ins, const X86OpcodeEntry *entry)
 {
     const DecodedFields *f = &ins->fields;
@@ -451,7 +381,6 @@ void X86InstructionDecoder::buildMnemonic(Instruction *ins, const X86OpcodeEntry
     int  n = 0;
 
     if (entry->type == INST_JCC) {
-        /* Jcc：j + 条件码（短跳转取 opcode 低 4 位，近跳转同理） */
         n = snprintf(buf, sizeof(buf), "j%s", x86ConditionName(f->opcode & 0x0F));
     } else if (entry->enc == ENC_GROUP1) {
         n = snprintf(buf, sizeof(buf), "%s", x86Group1Name(f->groupExt));
@@ -466,8 +395,6 @@ void X86InstructionDecoder::buildMnemonic(Instruction *ins, const X86OpcodeEntry
     } else if (entry->enc == ENC_GROUP7) {
         n = snprintf(buf, sizeof(buf), "%s", x86Group7Name(f->groupExt));
     } else if (!entry->isTwoByte && (entry->opcode == 0x98 || entry->opcode == 0x99)) {
-        /* 符号扩展/转换指令族：名字随操作数宽度变化
-         *   98: cbw / cwde / cdqe      99: cwd / cdq / cqo */
         if (entry->opcode == 0x98) {
             if (f->rexW)              n = snprintf(buf, sizeof(buf), "cdqe");
             else if (f->opsizePrefix) n = snprintf(buf, sizeof(buf), "cbw");
@@ -478,7 +405,6 @@ void X86InstructionDecoder::buildMnemonic(Instruction *ins, const X86OpcodeEntry
             else                      n = snprintf(buf, sizeof(buf), "cdq");
         }
     } else if (!entry->isTwoByte && entry->opcode >= 0xE0 && entry->opcode <= 0xE3) {
-        /* LOOP 家族助记符各不相同 */
         switch (entry->opcode) {
         case 0xE0: n = snprintf(buf, sizeof(buf), "loopne"); break;
         case 0xE1: n = snprintf(buf, sizeof(buf), "loope");  break;
@@ -486,8 +412,6 @@ void X86InstructionDecoder::buildMnemonic(Instruction *ins, const X86OpcodeEntry
         default:   n = snprintf(buf, sizeof(buf), "jrcxz");  break;
         }
     } else if (entry->isTwoByte && entry->opcode == 0x1E) {
-        /* F3 0F 1E FA = endbr64，F3 0F 1E FB = endbr32
-         * （CFI 控制流保护插桩，函数入口常见；其余形态按 nop 处理） */
         if (f->hasModRM && f->modrm == 0xFA) {
             n = snprintf(buf, sizeof(buf), "endbr64");
         } else if (f->hasModRM && f->modrm == 0xFB) {
@@ -496,10 +420,8 @@ void X86InstructionDecoder::buildMnemonic(Instruction *ins, const X86OpcodeEntry
             n = snprintf(buf, sizeof(buf), "nop");
         }
     } else if (entry->isTwoByte && (f->opcode & 0xF0) == 0x90) {
-        /* 0F 90-9F：setcc */
         n = snprintf(buf, sizeof(buf), "set%s", x86ConditionName(f->opcode & 0x0F));
     } else if (entry->isTwoByte && (f->opcode & 0xF0) == 0x40) {
-        /* 0F 40-4F：cmovcc */
         n = snprintf(buf, sizeof(buf), "cmov%s", x86ConditionName(f->opcode & 0x0F));
     } else {
         n = snprintf(buf, sizeof(buf), "%s", entry->mnemonic);
@@ -509,12 +431,9 @@ void X86InstructionDecoder::buildMnemonic(Instruction *ins, const X86OpcodeEntry
     if (n >= (int)sizeof(buf)) n = (int)sizeof(buf) - 1;
     memcpy(ins->mnemonic, buf, (size_t)n);
     ins->mnemonic[n] = '\0';
-    (void)sizeSuffix;   /* 后缀目前不附加到助记符上，避免与 objdump 风格混淆 */
+    (void)sizeSuffix;
 }
 
-/* ---------------------------------------------------------------------------
- * 操作数文本
- * ------------------------------------------------------------------------- */
 void X86InstructionDecoder::buildOperands(Instruction *ins, const X86OpcodeEntry *entry)
 {
     char rmBuf[96];
@@ -526,7 +445,6 @@ void X86InstructionDecoder::buildOperands(Instruction *ins, const X86OpcodeEntry
     const DecodedFields *f = &ins->fields;
     const char *mn = ins->mnemonic;
 
-    /* ---------------- 控制流类：显示绝对目标地址 ---------------- */
     if (entry->enc == ENC_REL8 || entry->enc == ENC_REL32) {
         if (ins->targetKnown) {
             snprintf(ins->operands, sizeof(ins->operands), "0x%llx",
@@ -537,7 +455,6 @@ void X86InstructionDecoder::buildOperands(Instruction *ins, const X86OpcodeEntry
         return;
     }
 
-    /* ---------------- 分组指令 ---------------- */
     switch (entry->enc) {
     case ENC_GROUP1: {
         formatRmOperand(ins, rmBuf, sizeof(rmBuf), sizeBytes);
@@ -581,8 +498,6 @@ void X86InstructionDecoder::buildOperands(Instruction *ins, const X86OpcodeEntry
         formatRmOperand(ins, rmBuf, sizeof(rmBuf),
                         (f->groupExt == 2 || f->groupExt == 4) ? 8 : sizeBytes);
         if (f->groupExt == 2 || f->groupExt == 4) {
-            /* 间接 call / jmp：AT&T 语法用 * 前缀表示"目标来自寄存器或内存"，
-             * 与直接跳转（目标写在指令里）区分开 */
             snprintf(ins->operands, sizeof(ins->operands), "*%s", rmBuf);
         } else {
             snprintf(ins->operands, sizeof(ins->operands), "%s", rmBuf);
@@ -593,14 +508,12 @@ void X86InstructionDecoder::buildOperands(Instruction *ins, const X86OpcodeEntry
         break;
     }
 
-    /* ---------------- push/pop 寄存器（50-5F） ---------------- */
     if (entry->enc == ENC_PLUS_RD) {
         formatRegOperand(ins, regBuf, sizeof(regBuf), 8, 0);
         snprintf(ins->operands, sizeof(ins->operands), "%s", regBuf);
         return;
     }
 
-    /* ---------------- mov r8, imm8（B0-B7） ---------------- */
     if (entry->enc == ENC_PLUS_RD_IMM8) {
         formatRegOperand(ins, regBuf, sizeof(regBuf), 1, 0);
         snprintf(ins->operands, sizeof(ins->operands), "$0x%llx,%s",
@@ -608,14 +521,10 @@ void X86InstructionDecoder::buildOperands(Instruction *ins, const X86OpcodeEntry
         return;
     }
 
-    /* ---------------- mov r, imm（B8-BF） ---------------- */
     if (entry->enc == ENC_PLUS_RD_IMM) {
         int regSize = f->rexW ? 8 : (f->opsizePrefix ? 2 : 4);
         formatRegOperand(ins, regBuf, sizeof(regBuf), regSize, 0);
 
-        /* 立即数按**目标寄存器宽度**截断显示：
-         * mov $0xffffffff,%eax 应当显示 0xffffffff，
-         * 而不是符号扩展后的 0xffffffffffffffff */
         uint64_t value = (uint64_t)f->immediate;
         if (regSize == 4)      value &= 0xFFFFFFFFULL;
         else if (regSize == 2) value &= 0xFFFFULL;
@@ -626,7 +535,6 @@ void X86InstructionDecoder::buildOperands(Instruction *ins, const X86OpcodeEntry
         return;
     }
 
-    /* ---------------- 立即数类（无 ModRM） ---------------- */
     switch (entry->enc) {
     case ENC_IMM8:
     case ENC_IMM16:
@@ -635,7 +543,6 @@ void X86InstructionDecoder::buildOperands(Instruction *ins, const X86OpcodeEntry
             snprintf(ins->operands, sizeof(ins->operands), "$0x%llx",
                      (unsigned long long)(uint64_t)f->immediate);
         } else {
-            /* 累加器类指令：AL / AX / EAX / RAX 按宽度选 */
             snprintf(ins->operands, sizeof(ins->operands), "$0x%llx,%%%s",
                      (unsigned long long)(uint64_t)f->immediate,
                      accumulatorName(f->opcode, f));
@@ -647,22 +554,17 @@ void X86InstructionDecoder::buildOperands(Instruction *ins, const X86OpcodeEntry
         break;
     }
 
-    /* ---------------- 单操作数的 ModRM 指令 ---------------- */
     if (!entry->isTwoByte && entry->opcode == 0x8F) {
-        /* 8F /0 = pop r/m64 */
         formatRmOperand(ins, rmBuf, sizeof(rmBuf), 8);
         snprintf(ins->operands, sizeof(ins->operands), "%s", rmBuf);
         return;
     }
     if (entry->isTwoByte && entry->opcode == 0x1F) {
-        /* 0F 1F /0 = 多字节 nop，只显示 r/m 操作数 */
         formatRmOperand(ins, rmBuf, sizeof(rmBuf), sizeBytes);
         snprintf(ins->operands, sizeof(ins->operands), "%s", rmBuf);
         return;
     }
     if (entry->isTwoByte && entry->opcode == 0x1E) {
-        /* endbr64 / endbr32 是**无操作数**指令：ModRM 字节只是编码的一部分，
-         * 不表示任何操作数 */
         if (f->hasModRM && (f->modrm == 0xFA || f->modrm == 0xFB)) {
             ins->operands[0] = '\0';
             return;
@@ -672,33 +574,27 @@ void X86InstructionDecoder::buildOperands(Instruction *ins, const X86OpcodeEntry
         return;
     }
     if (entry->isTwoByte && (f->opcode & 0xF0) == 0x90) {
-        /* 0F 90-9F = SETcc r/m8：单操作数，且只操作 8 位 */
         formatRmOperand(ins, rmBuf, sizeof(rmBuf), 1);
         snprintf(ins->operands, sizeof(ins->operands), "%s", rmBuf);
         return;
     }
 
-    /* ---------------- ModRM 类 ---------------- */
     if (!f->hasModRM) return;
 
-    /* 源操作数宽度与目标寄存器不同的指令 */
     int rmSize = sizeBytes;
     if (entry->isTwoByte) {
-        if (entry->opcode == 0xB6 || entry->opcode == 0xBE) rmSize = 1;  /* movzx/movsx r, r/m8  */
-        else if (entry->opcode == 0xB7 || entry->opcode == 0xBF) rmSize = 2; /* movzx/movsx r, r/m16 */
+        if (entry->opcode == 0xB6 || entry->opcode == 0xBE) rmSize = 1;
+        else if (entry->opcode == 0xB7 || entry->opcode == 0xBF) rmSize = 2;
     } else if (entry->opcode == 0x63) {
-        rmSize = 4;                     /* movsxd r64, r/m32 —— 源固定 32 位 */
+        rmSize = 4;
     }
 
-    /* 操作数顺序：算术/逻辑/mov/test 组由 opcode 低 2 位决定 */
     int rmFirst;
     if (entry->enc == ENC_MODRM_IMM8 || entry->enc == ENC_MODRM_IMM16 ||
         entry->enc == ENC_MODRM_IMM32 || entry->enc == ENC_MODRM_IMM8_SX) {
-        /* 形如 mov r/m, imm / imul r, r/m, imm */
         formatRmOperand(ins, rmBuf, sizeof(rmBuf), sizeBytes);
         if (entry->enc == ENC_MODRM_IMM32 || entry->enc == ENC_MODRM_IMM16 ||
             entry->enc == ENC_MODRM_IMM8 || entry->enc == ENC_MODRM_IMM8_SX) {
-            /* imul r, r/m, imm 有第三个操作数 */
             if (strcmp(mn, "imul") == 0) {
                 formatRegOperand(ins, regBuf, sizeof(regBuf), sizeBytes, 1);
                 snprintf(ins->operands, sizeof(ins->operands), "$0x%llx,%s,%s",
@@ -711,18 +607,7 @@ void X86InstructionDecoder::buildOperands(Instruction *ins, const X86OpcodeEntry
         return;
     }
 
-    /* -----------------------------------------------------------------------
-     * 操作数顺序：Intel 语法与 AT&T 语法是**相反**的。
-     *
-     *   单字节算术/逻辑/mov/test（00/01/08/09/88/89…）：
-     *       Intel 低 2 位 00/01 → (r/m, reg)   → AT&T 显示 (reg, r/m) → reg 先
-     *       Intel 低 2 位 10/11 → (reg, r/m)   → AT&T 显示 (r/m, reg) → r/m 先
-     *   0F 系（movzx/movsx/imul/cmovcc）：
-     *       Intel (reg, r/m) → AT&T (r/m, reg) → r/m 先
-     * --------------------------------------------------------------------- */
     if (!entry->isTwoByte && entry->opcode == 0x8D) {
-        /* lea 是特例：Intel 写成 (reg, m)，AT&T 写成 (m, reg)，
-         * 内存操作数在前 —— 不能用下面的低 2 位规律 */
         rmFirst = 1;
     } else if (entry->isTwoByte) {
         rmFirst = 1;
@@ -740,14 +625,10 @@ void X86InstructionDecoder::buildOperands(Instruction *ins, const X86OpcodeEntry
     }
 }
 
-/* ---------------------------------------------------------------------------
- * 控制流目标解析
- * ------------------------------------------------------------------------- */
 void X86InstructionDecoder::resolveControlFlow(Instruction *ins, const X86OpcodeEntry *entry)
 {
     if (!ins->isBranch) return;
 
-    /* 相对跳转：目标 = 下一条指令地址 + 相对偏移 */
     if (entry->enc == ENC_REL8 || entry->enc == ENC_REL32) {
         int64_t rel = ins->fields.immediate;
         ins->target = (uint64_t)((int64_t)(ins->address + (uint64_t)ins->length) + rel);
@@ -755,19 +636,12 @@ void X86InstructionDecoder::resolveControlFlow(Instruction *ins, const X86Opcode
         return;
     }
 
-    /* 间接跳转（FF /2、FF /4）：目标在寄存器或内存里，静态无法确定 */
     if (ins->isIndirect) {
         ins->targetKnown = false;
         ins->target      = 0;
     }
 }
 
-/* ---------------------------------------------------------------------------
- * 解码一条指令
- * ------------------------------------------------------------------------- */
-/* ---------------------------------------------------------------------------
- * 指令类型名字
- * ------------------------------------------------------------------------- */
 const char *instructionTypeName(InstructionType type)
 {
     switch (type) {

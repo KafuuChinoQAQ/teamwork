@@ -1,15 +1,3 @@
-/* ============================================================================
- * elfcfg —— Linux 命令行 ELF 控制流图绘制工具（native 版本）
- * ----------------------------------------------------------------------------
- * 本程序不调用任何外部程序：ELF 解析、函数定位、指令解码、基本块划分、
- * CFG 构造全部由自身 C++ 代码实现。
- *
- * 【当前进度】
- *   阶段 1  ✅ core 层（BinaryFile/mmap、Log、MemoryArena、SimpleVector）
- *   阶段 2  ✅ ELF 文件头 / 节头表 / 字符串表
- *   阶段 3  ✅ 符号表 / 函数表 / 函数定位
- *   阶段 4~ 待接入：Instruction、x86-64 解码器、CFG、分析 Pass
- * ========================================================================== */
 #include "core/Log.h"
 #include "core/BinaryFile.h"
 #include "core/MemoryArena.h"
@@ -35,18 +23,17 @@
 #include <cstring>
 #include <cstdlib>
 
-/* 命令行子命令 */
 enum Command {
-    CMD_CFG,          /* 默认：输出 Graphviz DOT */
-    CMD_INFO,         /* --info    : ELF 概览          */
-    CMD_SECTIONS,     /* --sections: 节表              */
-    CMD_SYMBOLS,      /* --symbols : 符号表 / 函数表   */
-    CMD_HEXDUMP,      /* --hexdump : 各节文件内容头部  */
-    CMD_DISASM,       /* --disasm  : 自己的反汇编结果 */
-    CMD_SUMMARY,      /* --summary : 函数与 CFG 统计  */
-    CMD_TEXT,         /* --text    : 文本形式 CFG     */
-    CMD_BATCH,        /* --batch   : 批量分析多个文件 */
-    CMD_DIFF          /* --diff    : 对比两个文件     */
+    CMD_CFG,
+    CMD_INFO,
+    CMD_SECTIONS,
+    CMD_SYMBOLS,
+    CMD_HEXDUMP,
+    CMD_DISASM,
+    CMD_SUMMARY,
+    CMD_TEXT,
+    CMD_BATCH,
+    CMD_DIFF
 };
 
 static void printUsage(const char *prog)
@@ -72,7 +59,6 @@ static void printUsage(const char *prog)
         prog, prog, prog, prog, prog, prog, prog, prog, prog, prog);
 }
 
-/* 打印函数定位结果 */
 static void printFunctionInfo(const FunctionInfo &fn)
 {
     fprintf(stderr, "\n");
@@ -85,7 +71,6 @@ static void printFunctionInfo(const FunctionInfo &fn)
     fprintf(stderr, "  符号索引  : %d\n", fn.symbolIndex);
     fprintf(stderr, "  机器码指针: %p\n", (const void *)fn.code);
 
-    /* 打印前 16 字节机器码，确认定位正确 */
     if (fn.code && fn.size > 0) {
         size_t n = (fn.size < 16) ? (size_t)fn.size : 16;
         char hex[16 * 3 + 1];
@@ -98,60 +83,50 @@ static void printFunctionInfo(const FunctionInfo &fn)
     }
 }
 
-/* ---------------------------------------------------------------------------
- * 批处理：对多个 ELF 文件分析同一个函数，输出一张对比表
- * ---------------------------------------------------------------------------
- * 批量场景下反复构造/析构解析器没有必要，因此这里**复用同一个 ElfParser**，
- * 循环中依次 open 每个文件。
- *
- * 对比表在循环全部结束后统一打印 —— 这样输出整齐，也便于脚本二次解析；
- * 为此循环中先把每个文件里目标函数"记下来"，最后一次性呈现对比。
- * ------------------------------------------------------------------------- */
-#define kMaxBatchArgs 32          /* 命令行位置参数上限（函数名 + 文件） */
-#define kMaxBatch     30          /* 单次批处理最多分析的文件数          */
+#define kMaxBatchArgs 32
+#define kMaxBatch     30
 
 struct BatchItem {
     const char         *path;
-    const FunctionInfo *fn;      /* 目标函数条目（取自函数表视图） */
-    unsigned char      *codeCopy;/* 机器码私有副本（见下）       */
+    const FunctionInfo *fn;
+    unsigned char      *codeCopy;
     size_t              codeSize;
 };
 
-/* ---------------------------------------------------------------------------
- * 机器码副本
- * ---------------------------------------------------------------------------
- * 解析器是复用的：循环里每 open 一个文件，上一个文件的映射就被归还，
- * 而对比表要等整个循环结束才统一打印。
- * 因此要跨文件比较机器码，就必须在每个文件还“活着”的时候，
- * 把目标函数的字节复制到一块自己的堆内存里。
- * ------------------------------------------------------------------------- */
 static unsigned char *dupCode(const unsigned char *src, size_t size)
 {
-    if (!src || size == 0) return NULL;
+    const unsigned char *from = src;
+    if (!from || size == 0) return NULL;
 
-    unsigned char *p = (unsigned char *)malloc(size);
-    if (!p) return NULL;
+    unsigned char *buf = (unsigned char *)malloc(size);
+    unsigned char *to  = buf;
+    if (!to) return NULL;
 
-    memcpy(p, src, size);
-    return p;
+    memcpy(to, from, size);
+    return to;
 }
 
-/* 释放本轮收集到的全部机器码副本 */
+static void releaseOne(BatchItem *row)
+{
+    unsigned char *buf = row->codeCopy;
+    if (buf) {
+        free(buf);
+    }
+}
+
 static void freeCodeCopies(BatchItem *items, int n)
 {
+    BatchItem *rows = items;
+
     for (int i = 0; i < n; ++i) {
-        if (items[i].codeCopy) {
-            free(items[i].codeCopy);
-            /* ★★ 课堂演示点（三）：CWE-415 注入点 —— 此处漏掉了置空 ★★
-             * 正常收尾只会调用本函数一次，所以平时看不出问题；
-             * 一旦“提前收尾”的路径也调用它，同一个指针就被释放两次。 */
-        }
+        BatchItem *row = rows + i;
+        releaseOne(row);
     }
 }
 
 static int runBatch(const char *funcName, const char *const *files, int nfiles)
 {
-    ElfParser parser;                    /* 复用同一个解析器 */
+    ElfParser parser;
     BatchItem items[kMaxBatch];
     int       n    = 0;
     int       nOk  = 0;
@@ -161,110 +136,104 @@ static int runBatch(const char *funcName, const char *const *files, int nfiles)
     printf("批量分析：函数 '%s'，共 %d 个文件\n", funcName, nfiles);
 
     for (int i = 0; i < nfiles && n < kMaxBatch; i++) {
+        const char *path = files[i];
         BatchItem it;
-        it.path     = files[i];
+        it.path     = path;
         it.fn       = NULL;
         it.codeCopy = NULL;
         it.codeSize = 0;
 
-        if (!parser.open(files[i])) {
-            logWarn("跳过 %s：%s", files[i], parser.lastError());
+        if (!parser.open(path)) {
+            logWarn("跳过 %s：%s", path, parser.lastError());
             nFail++;
             items[n++] = it;
             continue;
         }
         nOk++;
 
-        /* 记下这个文件里目标函数的条目，留到循环结束后统一对比 */
-        it.fn = parser.functions().findByName(funcName);
-        if (it.fn) {
+        const FunctionTable &tbl = parser.functions();
+        const FunctionInfo  *hit = tbl.findByName(funcName);
+        it.fn = hit;
+
+        if (hit) {
             nHit++;
-            /* 下一个文件一打开，这个映射就没了，先把机器码复制出来 */
-            it.codeCopy = dupCode(it.fn->code, (size_t)it.fn->size);
-            it.codeSize = it.codeCopy ? (size_t)it.fn->size : 0;
+            const unsigned char *code = hit->code;
+            size_t               len  = (size_t)hit->size;
+            unsigned char       *copy = dupCode(code, len);
+            it.codeCopy = copy;
+            it.codeSize = copy ? len : 0;
         }
 
         items[n++] = it;
     }
 
-    /* ---- 循环结束后，统一打印对比表 ---- */
     printf("\n%-30s %-18s %8s %10s   %s\n",
            "文件", "函数入口地址", "大小", "机器码首字节", "机器码指针");
     printf("----------------------------------------------------------------------------------\n");
 
     for (int i = 0; i < n; i++) {
-        const BatchItem   *it = &items[i];
-        const FunctionInfo *f = it->fn;
+        const BatchItem    *row  = &items[i];
+        const char         *path = row->path;
+        const FunctionInfo *f    = row->fn;
 
         if (!f) {
-            printf("%-30s %s\n", it->path, "(该文件没有此函数 / 解析失败)");
+            printf("%-30s %s\n", path, "(该文件没有此函数 / 解析失败)");
             continue;
         }
+
+        const unsigned char *code = f->code;
+        uint64_t             addr = f->virtualAddress;
+        uint64_t             size = f->size;
+
         printf("%-30s 0x%-16llx %8llu %10s   %p\n",
-               it->path,
-               (unsigned long long)f->virtualAddress,
-               (unsigned long long)f->size,
-               (f->code && f->size) ? "——" : "(无)",
-               (const void *)f->code);
+               path,
+               (unsigned long long)addr,
+               (unsigned long long)size,
+               (code && size) ? "——" : "(无)",
+               (const void *)code);
     }
 
     printf("\n汇总：解析成功 %d 个，定位到 '%s' 的 %d 个（共 %d 个文件）\n",
            nOk, funcName, nHit, nfiles);
 
-    /* ---- 逐个校验每个函数的机器码是否仍可读（读副本，不碰已归还的映像） ---- */
     printf("\n机器码校验（读取各函数首字节）：\n");
     for (int i = 0; i < n; i++) {
-        const BatchItem *it = &items[i];
-        if (!it->codeCopy || it->codeSize < 4) continue;
+        const BatchItem     *row  = &items[i];
+        const unsigned char *buf  = row->codeCopy;
+        const char          *path = row->path;
+        if (!buf || row->codeSize < 4) continue;
 
         printf("  %-30s 首字节 = %02x %02x %02x %02x\n",
-               it->path,
-               it->codeCopy[0], it->codeCopy[1],
-               it->codeCopy[2], it->codeCopy[3]);
+               path, buf[0], buf[1], buf[2], buf[3]);
     }
 
-    /* ---- 收尾 ----
-     * 有文件解析失败时，本次结果是不完整的：先把本轮缓存清掉，
-     * 避免把残缺数据当成结论。
-     */
+    BatchItem *rows = items;
+
     if (nFail > 0) {
         logWarn("有 %d 个文件解析失败，本次批量分析结果不完整", nFail);
-        freeCodeCopies(items, n);
-        /* ★★ 课堂演示点（三）：CWE-415 注入点 —— 此处漏掉了 return 1; ★★
-         * 少了这个 return，下面“正常收尾”的清理会再执行一遍，
-         * 于是同一批机器码副本被 free 两次。 */
+        freeCodeCopies(rows, n);
     }
 
-    freeCodeCopies(items, n);          /* 正常收尾：释放本轮全部副本 */
+    freeCodeCopies(rows, n);
 
     printf("\n批处理完成。\n");
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * 文件对比：比较同一个函数在两个 ELF 文件中的差异
- * ---------------------------------------------------------------------------
- * 典型用途是「同一程序的两个构建版本之间，某个函数有没有变化」——
- * 例如回归测试时确认改动只影响了预期的那几个函数。
- *
- * 实现上先解析基准文件、记下目标函数与几个概览量，
- * 再解析对比文件，最后把两者并排输出。
- * ------------------------------------------------------------------------- */
 static int runDiff(const char *funcName, const char *fileA, const char *fileB)
 {
     ElfParser parser;
 
-    /* ---- 基准文件 ---- */
     if (!parser.open(fileA)) {
         logError("无法解析基准文件 %s：%s", fileA, parser.lastError());
         return 1;
     }
-    const FunctionInfo *fa = parser.functions().findByName(funcName);
+    const FunctionTable &tblA = parser.functions();
+    const FunctionInfo  *fa   = tblA.findByName(funcName);
     if (!fa) {
         logError("基准文件 %s 中没有函数 '%s'", fileA, funcName);
         return 1;
     }
-    /* 记下基准文件的信息，供后面并排输出 */
     const FunctionInfo *base   = fa;
     unsigned            nSecA  = parser.sections().count();
     uint64_t            entryA = parser.header().entry();
@@ -275,12 +244,12 @@ static int runDiff(const char *funcName, const char *fileA, const char *fileB)
            (unsigned long long)base->size, nSecA,
            (unsigned long long)entryA);
 
-    /* ---- 对比文件（同一个解析器接着解析）---- */
     if (!parser.open(fileB)) {
         logError("无法解析对比文件 %s：%s", fileB, parser.lastError());
         return 1;
     }
-    const FunctionInfo *fb = parser.functions().findByName(funcName);
+    const FunctionTable &tblB = parser.functions();
+    const FunctionInfo  *fb   = tblB.findByName(funcName);
     if (!fb) {
         logError("对比文件 %s 中没有函数 '%s'", fileB, funcName);
         return 1;
@@ -291,7 +260,6 @@ static int runDiff(const char *funcName, const char *fileA, const char *fileB)
            (unsigned long long)fb->size, parser.sections().count(),
            (unsigned long long)parser.header().entry());
 
-    /* ---- 并排输出差异 ---- */
     printf("\n%-14s %-18s %10s %10s\n", "来源", "函数地址", "大小", "机器码");
     printf("----------------------------------------------------------------\n");
     printf("%-14s 0x%-16llx %10llu %10s\n", "基准",
@@ -303,7 +271,6 @@ static int runDiff(const char *funcName, const char *fileA, const char *fileB)
            (unsigned long long)fb->size,
            (fb->code && fb->size) ? "可读" : "无");
 
-    /* ---- 结论 ---- */
     if (base->size == fb->size) {
         printf("\n结论：两个版本中该函数大小相同（%llu 字节）\n",
                (unsigned long long)fb->size);
@@ -312,7 +279,6 @@ static int runDiff(const char *funcName, const char *fileA, const char *fileB)
                (long long)fb->size - (long long)base->size);
     }
 
-    /* 机器码逐字节比对（大小相同才有意义） */
     if (base->code && fb->code && base->size == fb->size && base->size > 0) {
         size_t differ = 0;
         for (size_t i = 0; i < (size_t)base->size; i++) {
@@ -337,11 +303,9 @@ int main(int argc, char **argv)
     const char *funcName = NULL;
     Command     command  = CMD_CFG;
 
-    /* 批处理的位置参数：第 1 个是函数名，其余是文件 */
     const char *posArg[kMaxBatchArgs];
     int         posCount = 0;
 
-    /* ---- 参数解析 ---- */
     for (int i = 1; i < argc; ++i) {
         const char *a = argv[i];
 
@@ -420,16 +384,12 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    /* ======================================================================
-     * 1. 打开并解析 ELF（内部使用 BinaryFile 基类指针 → mmap 派生类）
-     * ==================================================================== */
     ElfParser parser;
     if (!parser.open(elfPath)) {
         logError("解析失败：%s", parser.lastError());
         return 2;
     }
 
-    /* ---- 纯信息类命令，不需要函数名 ---- */
     if (command == CMD_INFO) {
         parser.dumpInfo();
         return 0;
@@ -448,7 +408,6 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    /* ---- 其余命令都需要函数名 ---- */
     if (!funcName) {
         logError("缺少函数名。用法：%s <ELF文件> <函数名>", argv[0]);
         return 1;
@@ -463,22 +422,6 @@ int main(int argc, char **argv)
 
     printFunctionInfo(fn);
 
-    /* ======================================================================
-     * 2. 解码：机器码 → Instruction 链表
-     * ----------------------------------------------------------------------
-     * ★★ 课堂演示点（一）：三级继承下的运行时多态
-     *
-     *        InstructionDecoder        任意 CPU 架构的解码接口（最顶层抽象）
-     *                △
-     *       X86InstructionDecoder      x86 家族共有机制（抽象中间层）
-     *                △
-     *           X86_64Decoder           x86-64 长模式具体实现
-     *
-     *    主程序**只面向最顶层的 InstructionDecoder 编程**：
-     *    声明的是顶层基类指针，创建的是最底层派生类对象。
-     *    中间那层 X86InstructionDecoder 对调用方完全透明 ——
-     *    这正是继承层次可以随需求加深、而上层代码一行不改的原因。
-     * ==================================================================== */
     MemoryArena arena;
 
     InstructionDecoder *decoder = new X86_64Decoder();
@@ -495,12 +438,10 @@ int main(int argc, char **argv)
         return 4;
     }
 
-    /* ---- 若是纯反汇编请求，打印后即可结束 ---- */
     if (command == CMD_DISASM) {
         printf("反汇编: 函数 %s（0x%llx，%llu 字节，共 %lu 条指令）\n",
                fn.name, (unsigned long long)fn.virtualAddress,
                (unsigned long long)fn.size, count);
-        /* 机器码字段宽度按 x86 最长指令 15 字节算：15*3 = 45 字符 */
         printf("%-12s %-47s %s\n", "地址", "机器码", "指令");
 
         for (Instruction *ins = insns; ins != NULL; ins = ins->next) {
@@ -518,9 +459,6 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    /* ======================================================================
-     * 3. 基本块划分（基类指针 → Leader 法派生类）
-     * ==================================================================== */
     ControlFlowGraph cfg(&arena);
     cfg.setFunction(&fn);
 
@@ -531,9 +469,6 @@ int main(int argc, char **argv)
         return 5;
     }
 
-    /* ======================================================================
-     * 4. 基本块执行关系识别（基类指针 → x86 派生类）
-     * ==================================================================== */
     EdgeAnalyzer *analyzer = new X86EdgeAnalyzer();
     if (!analyzer->analyze(&cfg)) {
         logError("执行关系分析失败");
@@ -541,21 +476,6 @@ int main(int argc, char **argv)
         return 6;
     }
 
-    /* ======================================================================
-     * 5. 分析 Pass
-     * ----------------------------------------------------------------------
-     * ★★ 课堂演示点（二）：分析 Pass 的三级继承
-     *
-     *        AnalysisPass        任意分析的通用接口（最顶层抽象）
-     *               △
-     *        CFGAnalysisPass     以控制流图为对象的分析（抽象中间层，
-     *                            提供输入校验与出边遍历等共性）
-     *         /      |       \
-     *  Reachability LoopHint  Statistics    三个具体算法
-     *
-     *    三个 Pass 各深一层，但这里统一用**最顶层**的基类指针数组驱动：
-     *    将来新增一个分析 Pass，只需多加一个数组元素，循环一行都不用改。
-     * ==================================================================== */
     ReachabilityPass reachability;
     LoopHintPass     loopHint;
     StatisticsPass   statistics;
@@ -574,9 +494,6 @@ int main(int argc, char **argv)
         }
     }
 
-    /* ======================================================================
-     * 6. 输出
-     * ==================================================================== */
     switch (command) {
     case CMD_SUMMARY:
         cfg.printSummary();
@@ -589,7 +506,6 @@ int main(int argc, char **argv)
         break;
 
     case CMD_TEXT: {
-        /* 多态：基类指针 → 文本输出派生类 */
         GraphWriter *textWriter = new TextWriter();
         textWriter->write(stdout, &cfg);
         delete textWriter;
@@ -598,7 +514,6 @@ int main(int argc, char **argv)
 
     case CMD_CFG:
     default: {
-        /* 多态：基类指针 → DOT 派生类，输出到 stdout */
         GraphWriter *dotWriter = new DotGraphWriter();
         bool ok = dotWriter->write(stdout, &cfg);
         fflush(stdout);
@@ -615,6 +530,6 @@ int main(int argc, char **argv)
 
     delete builder;
     delete analyzer;
-    delete decoder;        /* 虚析构保证资源正确释放 */
+    delete decoder;
     return 0;
 }

@@ -1,6 +1,3 @@
-/* ============================================================================
- * output/TextWriter.cpp —— 文本输出实现
- * ========================================================================== */
 #include "output/TextWriter.h"
 #include "cfg/ControlFlowGraph.h"
 #include "arch/Instruction.h"
@@ -22,7 +19,6 @@ bool TextWriter::write(FILE *out, ControlFlowGraph *cfg)
 
     const FunctionInfo *fn = cfg->function();
 
-    /* ---- 函数概览 ---- */
     fprintf(out, "========================================================\n");
     fprintf(out, "控制流图（文本形式）\n");
     fprintf(out, "========================================================\n");
@@ -36,7 +32,6 @@ bool TextWriter::write(FILE *out, ControlFlowGraph *cfg)
     fprintf(out, "指令      : %lu\n", (unsigned long)cfg->instructionCount());
     fprintf(out, "\n");
 
-    /* ---- 基本块 ---- */
     fprintf(out, "--------------------------------------------------------\n");
     fprintf(out, "基本块\n");
     fprintf(out, "--------------------------------------------------------\n");
@@ -60,7 +55,6 @@ bool TextWriter::write(FILE *out, ControlFlowGraph *cfg)
         }
     }
 
-    /* ---- 边 ---- */
     fprintf(out, "\n--------------------------------------------------------\n");
     fprintf(out, "基本块执行关系（边）\n");
     fprintf(out, "--------------------------------------------------------\n");

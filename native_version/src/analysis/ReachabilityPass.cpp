@@ -1,9 +1,3 @@
-/* ============================================================================
- * analysis/ReachabilityPass.cpp —— 可达性分析实现
- * ----------------------------------------------------------------------------
- * 使用广度优先遍历。工作队列用自制的 SimpleVector 实现（下标推进，
- * 不做 pop，避免额外的数据搬移），不使用 STL。
- * ========================================================================== */
 #include "analysis/ReachabilityPass.h"
 #include "cfg/ControlFlowGraph.h"
 #include "core/SimpleVector.h"
@@ -25,7 +19,6 @@ bool ReachabilityPass::run(ControlFlowGraph *cfg)
         return false;
     }
 
-    /* ---- 1. 先把所有块标记为不可达 ---- */
     for (BasicBlock *b = cfg->blocks(); b != NULL; b = b->next) {
         b->reachable = false;
     }
@@ -36,7 +29,6 @@ bool ReachabilityPass::run(ControlFlowGraph *cfg)
         return false;
     }
 
-    /* ---- 2. 从入口块开始广度优先遍历 ---- */
     SimpleVector<BasicBlock *> work;
     if (!work.pushBack(entry)) {
         logError("ReachabilityPass: 工作队列初始化失败");
@@ -49,9 +41,8 @@ bool ReachabilityPass::run(ControlFlowGraph *cfg)
         BasicBlock *b = work[head];
         head++;
 
-        /* 扫描所有以 b 为起点的边 */
         for (Edge *e = firstOutEdge(cfg, b); e != NULL; e = nextOutEdge(e, b)) {
-            if (e->to == NULL) continue;              /* 间接跳转等未解析的边 */
+            if (e->to == NULL) continue;
             if (e->to->reachable) continue;
 
             e->to->reachable = true;
@@ -62,7 +53,6 @@ bool ReachabilityPass::run(ControlFlowGraph *cfg)
         }
     }
 
-    /* ---- 3. 统计 ---- */
     for (BasicBlock *b = cfg->blocks(); b != NULL; b = b->next) {
         if (b->reachable) reachableCount_++;
         else              unreachableCount_++;

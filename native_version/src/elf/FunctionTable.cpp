@@ -1,6 +1,3 @@
-/* ============================================================================
- * elf/FunctionTable.cpp —— 函数表实现
- * ========================================================================== */
 #include "elf/FunctionTable.h"
 #include "elf/SymbolTable.h"
 #include "elf/SectionTable.h"
@@ -35,7 +32,6 @@ bool FunctionTable::build(const SymbolTable &symtab,
         if (!symtab.fillFunctionInfo(i, sections, fileData, fileSize, &info)) {
             continue;
         }
-        /* 只保留有实际机器码、且有名字的函数 */
         if (!info.hasCode()) continue;
         if (info.name[0] == '\0') continue;
 
@@ -52,10 +48,13 @@ bool FunctionTable::build(const SymbolTable &symtab,
 
 const FunctionInfo *FunctionTable::findByName(const char *name) const
 {
-    if (!name) return NULL;
-    for (size_t i = 0; i < functions_.size(); ++i) {
-        const FunctionInfo *f = functions_.at(i);
-        if (f && strcmp(f->name, name) == 0) return f;
+    const char *key = name;
+    if (!key) return NULL;
+
+    const SimpleVector<FunctionInfo> &rows = functions_;
+    for (size_t i = 0; i < rows.size(); ++i) {
+        const FunctionInfo *f = rows.at(i);
+        if (f && strcmp(f->name, key) == 0) return f;
     }
     return NULL;
 }

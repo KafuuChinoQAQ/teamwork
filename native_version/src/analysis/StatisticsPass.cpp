@@ -1,6 +1,3 @@
-/* ============================================================================
- * analysis/StatisticsPass.cpp —— 统计实现
- * ========================================================================== */
 #include "analysis/StatisticsPass.h"
 #include "cfg/ControlFlowGraph.h"
 #include "arch/Instruction.h"
@@ -22,7 +19,6 @@ bool StatisticsPass::run(ControlFlowGraph *cfg)
         return false;
     }
 
-    /* ---- 逐块、逐指令统计 ---- */
     for (BasicBlock *b = cfg->blocks(); b != NULL; b = b->next) {
         stats_.blocks++;
         if (!b->reachable) stats_.unreachableBlocks++;
@@ -44,7 +40,6 @@ bool StatisticsPass::run(ControlFlowGraph *cfg)
         }
     }
 
-    /* ---- 边的统计 ---- */
     for (Edge *e = cfg->edges(); e != NULL; e = e->next) {
         stats_.edges++;
         if (e->isBackwardHint) stats_.backwardHints++;

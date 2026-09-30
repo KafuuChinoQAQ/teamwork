@@ -1,6 +1,3 @@
-/* ============================================================================
- * elf/SymbolTable.cpp —— 符号表实现
- * ========================================================================== */
 #include "elf/SymbolTable.h"
 #include "elf/SectionTable.h"
 #include "core/Log.h"
@@ -105,14 +102,6 @@ size_t SymbolTable::functionCount(void) const
     return n;
 }
 
-/* ---------------------------------------------------------------------------
- * 把符号表条目转换为 FunctionInfo：
- *   st_value 是虚拟地址，需要借助节表换算成"文件偏移 + 机器码指针"。
- * 同时处理三类边界情况：
- *   - 符号未定义（SHN_UNDEF）或特殊索引（SHN_ABS 等）→ 没有机器码；
- *   - st_size == 0 → 用"同节内下一个函数符号的地址"或"节末尾"兜底；
- *   - st_size 超出节范围 → 截断并告警。
- * ------------------------------------------------------------------------- */
 bool SymbolTable::fillFunctionInfo(size_t index,
                                    const SectionTable &sections,
                                    const unsigned char *fileData,
@@ -137,7 +126,6 @@ bool SymbolTable::fillFunctionInfo(size_t index,
     out->symbolIndex    = (int)index;
     out->bind           = (unsigned char)bindOf(sym);
 
-    /* ---- 判断符号是否真的对着某段代码 ---- */
     if (sym->st_shndx == SHN_UNDEF) {
         logDebug("符号 %s: 未定义（SHN_UNDEF），没有机器码", out->name);
         return true;
@@ -182,7 +170,6 @@ bool SymbolTable::fillFunctionInfo(size_t index,
     uint64_t available = secSize - offsetInSection;
     uint64_t usable    = (uint64_t)sym->st_size;
 
-    /* ---- st_size == 0 的兜底：找同节内下一个函数符号 ---- */
     if (usable == 0) {
         uint64_t nextAddr = 0;
         for (size_t i = 0; i < count_; ++i) {
@@ -214,7 +201,6 @@ bool SymbolTable::fillFunctionInfo(size_t index,
     out->size       = usable;
     out->fileOffset = secOff + offsetInSection;
 
-    /* ---- 最终边界检查：机器码必须完整落在文件内 ---- */
     if (out->fileOffset > (uint64_t)fileSize ||
         usable > (uint64_t)fileSize - out->fileOffset) {
         logWarn("符号 %s: 机器码范围 [%llu, %llu) 超出文件大小 %lu，忽略",
@@ -226,7 +212,7 @@ bool SymbolTable::fillFunctionInfo(size_t index,
     }
 
     out->code = secData + offsetInSection;
-    (void)fileData;    /* fileData 仅用于保持接口一致性 */
+    (void)fileData;
     return true;
 }
 
@@ -269,7 +255,6 @@ void SymbolTable::dump(size_t limit) const
         int type = ELF64_ST_TYPE(sym->st_info);
         int bind = ELF64_ST_BIND(sym->st_info);
 
-        /* 只打印有意义的符号，跳过节符号和文件符号 */
         if (type != STT_FUNC && type != STT_OBJECT) continue;
         const char *nm = nameOf(sym);
         if (!nm || !*nm) continue;

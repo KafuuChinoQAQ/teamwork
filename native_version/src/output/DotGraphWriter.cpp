@@ -1,6 +1,3 @@
-/* ============================================================================
- * output/DotGraphWriter.cpp —— DOT 输出实现
- * ========================================================================== */
 #include "output/DotGraphWriter.h"
 #include "cfg/ControlFlowGraph.h"
 #include "arch/Instruction.h"
@@ -10,9 +7,6 @@
 #include <cstdio>
 #include <cstring>
 
-/* ---------------------------------------------------------------------------
- * GraphWriter 的公共工具
- * ------------------------------------------------------------------------- */
 void GraphWriter::writeEscaped(FILE *out, const char *s)
 {
     if (!s) return;
@@ -49,9 +43,6 @@ int GraphWriter::isExitBlock(const void *block)
     return (b->last->type == INST_RET || b->last->type == INST_HLT) ? 1 : 0;
 }
 
-/* ---------------------------------------------------------------------------
- * DotGraphWriter
- * ------------------------------------------------------------------------- */
 bool DotGraphWriter::write(FILE *out, ControlFlowGraph *cfg)
 {
     if (!out || !cfg) {
@@ -66,7 +57,6 @@ bool DotGraphWriter::write(FILE *out, ControlFlowGraph *cfg)
     const FunctionInfo *fn = cfg->function();
     const char *funcName = fn ? fn->name : "unknown";
 
-    /* ---- 图头 ---- */
     fputs("digraph CFG {\n", out);
     fprintf(out, "    /* 由 elfcfg 自动生成 —— 函数 %s 的控制流图 */\n", funcName);
     fprintf(out, "    /* 入口: 0x%llx  基本块: %lu  边: %lu */\n",
@@ -83,7 +73,6 @@ bool DotGraphWriter::write(FILE *out, ControlFlowGraph *cfg)
           "style=filled, fillcolor=\"#eef4ff\", color=\"#3b6ea5\"];\n", out);
     fputs("    edge [fontname=\"Helvetica\", fontsize=9, color=\"#333333\"];\n\n", out);
 
-    /* ---- 节点 ---- */
     for (BasicBlock *b = cfg->blocks(); b != NULL; b = b->next) {
         char label[8192];
         int  off = 0;
@@ -118,7 +107,6 @@ bool DotGraphWriter::write(FILE *out, ControlFlowGraph *cfg)
 
         fprintf(out, "    B%d [label=\"%s\"", b->id, label);
 
-        /* 配色：入口绿、出口红、不可达灰 */
         if (b == cfg->entryBlock()) {
             fputs(", fillcolor=\"#d8f0d8\", color=\"#2e7d32\"", out);
         } else if (isExitBlock(b)) {
@@ -132,12 +120,10 @@ bool DotGraphWriter::write(FILE *out, ControlFlowGraph *cfg)
 
     fputs("\n", out);
 
-    /* ---- 边 ---- */
     for (Edge *e = cfg->edges(); e != NULL; e = e->next) {
         if (!e->from) continue;
 
         if (e->to == NULL) {
-            /* 间接跳转等无法解析目标的边：画成一个悬挂的注释节点 */
             fprintf(out, "    B%d -> I%d [label=", e->from->id, e->from->id);
             writeQuoted(out, (e->label && e->label[0]) ? e->label : "indirect");
             fputs(", style=dotted, color=\"#8a6d00\", fontcolor=\"#8a6d00\", "

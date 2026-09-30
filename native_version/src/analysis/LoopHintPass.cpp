@@ -1,6 +1,3 @@
-/* ============================================================================
- * analysis/LoopHintPass.cpp —— 向后跳转边识别实现
- * ========================================================================== */
 #include "analysis/LoopHintPass.h"
 #include "cfg/ControlFlowGraph.h"
 #include "core/Log.h"
@@ -20,16 +17,14 @@ bool LoopHintPass::run(ControlFlowGraph *cfg)
         return false;
     }
 
-    /* 先清除上一次的标记，保证可重复运行 */
     for (BasicBlock *b = cfg->blocks(); b != NULL; b = b->next) {
         b->loopHeader = false;
     }
 
-    /* 遍历所有边，挑出"目标地址 <= 源地址"的那些 */
     for (Edge *e = cfg->edges(); e != NULL; e = e->next) {
         if (!e->isBackwardHint || e->to == NULL) continue;
 
-        e->to->loopHeader = true;      /* 目标块可能是循环头 */
+        e->to->loopHeader = true;
         hintCount_++;
     }
 

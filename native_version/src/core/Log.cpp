@@ -1,13 +1,9 @@
-/* ============================================================================
- * core/Log.cpp —— 分级日志实现
- * ========================================================================== */
 #include "core/Log.h"
 
 #include <cstdio>
 #include <cstdarg>
 #include <cstring>
 
-/* ---- 模块内部状态（文件作用域，不导出） ---- */
 static LogLevel   g_level      = LOG_LEVEL_INFO;
 static const char *g_prefix    = "elfcfg";
 static unsigned long g_counters[4] = { 0, 0, 0, 0 };
@@ -65,14 +61,12 @@ unsigned long logCount(LogLevel level)
     return g_counters[level];
 }
 
-/* ---- 统一的输出函数 ---- */
 static void logWrite(LogLevel level, const char *fmt, va_list ap)
 {
     if (level > g_level) return;
 
     g_counters[level]++;
 
-    /* 固定缓冲区：日志内容不需要无限长，截断即可，避免动态分配 */
     char body[1024];
     vsnprintf(body, sizeof(body), fmt, ap);
 

@@ -1,6 +1,3 @@
-/* ============================================================================
- * arch/InstructionStream.cpp —— 指令流构建实现
- * ========================================================================== */
 #include "arch/InstructionStream.h"
 #include "arch/InstructionDecoder.h"
 #include "core/MemoryArena.h"
@@ -38,7 +35,6 @@ Instruction *decodeInstructionStream(InstructionDecoder *decoder,
 
         if (!decoder->decode(code + offset, size - offset,
                              baseAddress + (uint64_t)offset, ins)) {
-            /* 明确停止，并把现场信息报出来，便于定位需要补充的 opcode */
             logError("解码停止于 0x%llx（函数内偏移 %lu）：%s",
                      (unsigned long long)(baseAddress + (uint64_t)offset),
                      (unsigned long)offset, decoder->lastError());
@@ -51,10 +47,8 @@ Instruction *decodeInstructionStream(InstructionDecoder *decoder,
             break;
         }
 
-        /* 保存原始字节，便于回显与 gdb 对照 */
         memcpy(ins->bytes, code + offset, ins->length);
 
-        /* 串入双向链表 */
         ins->prev = tail;
         ins->next = NULL;
         if (tail) tail->next = ins;

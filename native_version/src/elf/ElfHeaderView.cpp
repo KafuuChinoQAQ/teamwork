@@ -1,6 +1,3 @@
-/* ============================================================================
- * elf/ElfHeaderView.cpp —— ELF 文件头解析与校验
- * ========================================================================== */
 #include "elf/ElfHeaderView.h"
 #include "core/Log.h"
 
@@ -30,7 +27,6 @@ bool ElfHeaderView::parse(const unsigned char *data, size_t size)
     fileSize_ = size;
     error_[0] = '\0';
 
-    /* ---- 1. 基本长度检查 ---- */
     if (!data) {
         setError("数据指针为空");
         return false;
@@ -43,7 +39,6 @@ bool ElfHeaderView::parse(const unsigned char *data, size_t size)
 
     const Elf64_Ehdr *eh = (const Elf64_Ehdr *)data;
 
-    /* ---- 2. magic 校验 0x7F 'E' 'L' 'F' ---- */
     if (eh->e_ident[EI_MAG0] != ELFMAG0 ||
         eh->e_ident[EI_MAG1] != ELFMAG1 ||
         eh->e_ident[EI_MAG2] != ELFMAG2 ||
@@ -54,42 +49,36 @@ bool ElfHeaderView::parse(const unsigned char *data, size_t size)
         return false;
     }
 
-    /* ---- 3. 位宽：只支持 64 位 ---- */
     if (eh->e_ident[EI_CLASS] != ELFCLASS64) {
         setError("不是 ELF64（EI_CLASS = %u，本程序只支持 ELFCLASS64）",
                  (unsigned)eh->e_ident[EI_CLASS]);
         return false;
     }
 
-    /* ---- 4. 字节序：只支持小端 ---- */
     if (eh->e_ident[EI_DATA] != ELFDATA2LSB) {
         setError("不是小端 ELF（EI_DATA = %u，本程序只支持 ELFDATA2LSB）",
                  (unsigned)eh->e_ident[EI_DATA]);
         return false;
     }
 
-    /* ---- 5. ELF 版本 ---- */
     if (eh->e_ident[EI_VERSION] != EV_CURRENT) {
         setError("不支持的 ELF 版本（EI_VERSION = %u）",
                  (unsigned)eh->e_ident[EI_VERSION]);
         return false;
     }
 
-    /* ---- 6. 目标架构：只支持 x86-64 ---- */
     if (eh->e_machine != EM_X86_64) {
         setError("不是 x86-64 目标文件（e_machine = %u，本程序只支持 EM_X86_64 = %u）",
                  (unsigned)eh->e_machine, (unsigned)EM_X86_64);
         return false;
     }
 
-    /* ---- 7. 节头表范围检查（防止后续按偏移访问时越界） ---- */
     if (eh->e_shoff != 0 && eh->e_shnum != 0) {
         if (eh->e_shentsize < sizeof(Elf64_Shdr)) {
             setError("节头表项过小：e_shentsize = %u，应至少为 %lu",
                      (unsigned)eh->e_shentsize, (unsigned long)sizeof(Elf64_Shdr));
             return false;
         }
-        /* 用 64 位运算，避免 e_shoff + e_shnum * e_shentsize 溢出 */
         uint64_t tableBytes = (uint64_t)eh->e_shnum * (uint64_t)eh->e_shentsize;
         if (eh->e_shoff > (uint64_t)size ||
             tableBytes > (uint64_t)size - eh->e_shoff) {
@@ -103,7 +92,6 @@ bool ElfHeaderView::parse(const unsigned char *data, size_t size)
         logWarn("该 ELF 没有节头表（e_shoff = 0），无法按节查找符号");
     }
 
-    /* ---- 8. 程序头表范围检查 ---- */
     if (eh->e_phoff != 0 && eh->e_phnum != 0 && eh->e_phentsize != 0) {
         uint64_t tableBytes = (uint64_t)eh->e_phnum * (uint64_t)eh->e_phentsize;
         if (eh->e_phoff > (uint64_t)size ||
@@ -125,7 +113,6 @@ bool ElfHeaderView::parse(const unsigned char *data, size_t size)
     return true;
 }
 
-/* ---- 访问器 ---- */
 unsigned char ElfHeaderView::elfClass(void) const
 {
     return ehdr_ ? ehdr_->e_ident[EI_CLASS] : 0;
@@ -191,7 +178,6 @@ unsigned short ElfHeaderView::sectionNameIndex(void) const
     return ehdr_ ? ehdr_->e_shstrndx : 0;
 }
 
-/* ---- 名字映射 ---- */
 const char *ElfHeaderView::machineName(void) const
 {
     if (!ehdr_) return "(未解析)";

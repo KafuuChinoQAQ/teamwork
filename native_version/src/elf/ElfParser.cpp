@@ -1,6 +1,3 @@
-/* ============================================================================
- * elf/ElfParser.cpp —— ELF 解析总入口实现
- * ========================================================================== */
 #include "elf/ElfParser.h"
 #include "core/BinaryFile.h"
 #include "core/Log.h"
@@ -28,15 +25,11 @@ void ElfParser::setError(const char *fmt, ...)
     va_end(ap);
 }
 
-/* ---------------------------------------------------------------------------
- * open：完整解析流程
- * ------------------------------------------------------------------------- */
 bool ElfParser::open(const char *path)
 {
     close();
     error_[0] = '\0';
 
-    /* ---- 1. 文件访问层：基类指针 → 派生类对象（运行时多态） ---- */
     file_ = new MappedBinaryFile();
     if (!file_) {
         setError("内存不足，无法创建文件对象");
@@ -50,7 +43,6 @@ bool ElfParser::open(const char *path)
         return false;
     }
 
-    /* ---- 2. ELF 文件头 ---- */
     if (!header_.parse(file_->data(), file_->size())) {
         setError("%s", header_.errorText());
         logError("ELF 文件头解析失败：%s", header_.errorText());
@@ -59,16 +51,13 @@ bool ElfParser::open(const char *path)
         return false;
     }
 
-    /* ---- 3. 节头表 ---- */
     if (!parseSections()) {
-        /* SectionTable 内部已给出具体错误 */
         delete file_;
         file_ = NULL;
         return false;
     }
 
-    /* ---- 4. 符号表 ---- */
-    parseSymbolTables();       /* 失败不致命：可能只是没有符号 */
+    parseSymbolTables();
 
     opened_ = true;
 
@@ -90,7 +79,6 @@ bool ElfParser::parseSections(void)
 
 bool ElfParser::parseSymbolTables(void)
 {
-    /* ---- .symtab + .strtab ---- */
     int symIdx = sections_.symtabIndex();
     int strIdx = sections_.strtabIndex();
     if (symIdx >= 0 && strIdx >= 0) {
@@ -109,7 +97,6 @@ bool ElfParser::parseSymbolTables(void)
         logDebug("ElfParser: 没有 .symtab（可能被 strip）");
     }
 
-    /* ---- .dynsym + .dynstr ---- */
     int dsymIdx = sections_.dynsymIndex();
     int dstrIdx = sections_.dynstrIndex();
     if (dsymIdx >= 0 && dstrIdx >= 0) {
@@ -124,7 +111,6 @@ bool ElfParser::parseSymbolTables(void)
         }
     }
 
-    /* ---- 构建函数表：优先 .symtab（更完整），否则退回 .dynsym ---- */
     const SymbolTable &primary = symtab_.isValid() ? symtab_ : dynsym_;
     if (primary.isValid()) {
         functions_.build(primary, sections_, file_->data(), file_->size());
@@ -138,7 +124,7 @@ bool ElfParser::parseSymbolTables(void)
 void ElfParser::close(void)
 {
     if (file_) {
-        delete file_;         /* 虚析构 → MappedBinaryFile::closeFile() */
+        delete file_;
         file_ = NULL;
     }
     opened_ = false;
@@ -158,14 +144,12 @@ bool ElfParser::findFunction(const char *name, FunctionInfo *out) const
 {
     if (!opened_ || !name || !out) return false;
 
-    /* 先查 .symtab */
     if (symtab_.isValid()) {
         if (symtab_.findFunction(name, sections_, file_->data(),
                                  file_->size(), out) && out->hasCode()) {
             return true;
         }
     }
-    /* 再查 .dynsym */
     if (dynsym_.isValid()) {
         if (dynsym_.findFunction(name, sections_, file_->data(),
                                  file_->size(), out) && out->hasCode()) {
@@ -175,9 +159,6 @@ bool ElfParser::findFunction(const char *name, FunctionInfo *out) const
     return false;
 }
 
-/* ---------------------------------------------------------------------------
- * 打印接口
- * ------------------------------------------------------------------------- */
 void ElfParser::dumpInfo(void) const
 {
     if (!opened_) {
@@ -224,12 +205,6 @@ void ElfParser::dumpFunctions(void) const
     functions_.dump(200);
 }
 
-/* ---------------------------------------------------------------------------
- * dumpSectionHex：打印各节在文件里的内容头部
- * ---------------------------------------------------------------------------
- * 用途：快速核对某个节的实际字节（比如对照 .text 开头的机器码）。
- * 只处理“有内容”的节，每个节最多打印前 16 字节。
- * ------------------------------------------------------------------------- */
 void ElfParser::dumpSectionHex(void) const
 {
     if (!opened_) {
@@ -237,28 +212,29 @@ void ElfParser::dumpSectionHex(void) const
         return;
     }
 
+    const SectionTable   &sec   = sections_;
+    const unsigned short  total = sec.count();
+
     printf("节内容（各节前 16 字节）:\n");
     printf("--------------------------------------------------------------\n");
 
-    for (unsigned short i = 0; i < sections_.count(); ++i) {
-        uint64_t size = sections_.sizeOf(i);
-        if (size == 0) continue;             /* 空节没有内容可打印 */
+    for (unsigned short i = 0; i < total; ++i) {
+        uint64_t size = sec.sizeOf(i);
+        if (size == 0) continue;
 
-        /* ★★ 课堂演示点（四）：CWE-476 注入点 ★★
-         * 这里漏掉了对返回值的判空。
-         * SectionTable::dataOf() 的契约写在 SectionTable.h 里：
-         *   越界、SHT_NOBITS（.bss 等）、sh_size == 0 一律返回 NULL。
-         * 注意 .bss 的 sh_size 并不为 0，所以上面那个 size == 0 的判断拦不住它。 */
-        const unsigned char *p = sections_.dataOf(i);
+        const unsigned char *raw = sec.dataOf(i);
+        const unsigned char *p   = raw;
 
         uint64_t n = (size < 16) ? size : 16;
         char hex[16 * 3 + 1];
         int  off = 0;
         for (uint64_t k = 0; k < n; ++k) {
-            off += snprintf(hex + off, sizeof(hex) - (size_t)off,
-                            "%02x ", p[k]);   /* ← p 为 NULL 时在此解引用 */
+            char *dst = hex + off;
+            off += snprintf(dst, sizeof(hex) - (size_t)off, "%02x ", p[k]);
         }
-        printf("  %-18s %-10llu %s\n", sections_.nameOf(i),
+
+        const char *label = sec.nameOf(i);
+        printf("  %-18s %-10llu %s\n", label,
                (unsigned long long)size, hex);
     }
 }

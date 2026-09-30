@@ -1,6 +1,3 @@
-/* ============================================================================
- * elf/SectionTable.cpp —— 节头表实现
- * ========================================================================== */
 #include "elf/SectionTable.h"
 #include "elf/ElfHeaderView.h"
 #include "core/Log.h"
@@ -49,7 +46,6 @@ bool SectionTable::parse(const unsigned char *fileData,
         return false;
     }
 
-    /* 范围已在 ElfHeaderView 中校验过，这里再确认一次（防御式编程） */
     uint64_t tableBytes = (uint64_t)shnum * (uint64_t)shentsize;
     if (shoff > (uint64_t)fileSize || tableBytes > (uint64_t)fileSize - shoff) {
         logError("SectionTable: 节头表超出文件范围");
@@ -60,7 +56,6 @@ bool SectionTable::parse(const unsigned char *fileData,
     count_   = shnum;
     parsed_  = true;
 
-    /* 绑定节名字符串表 */
     unsigned short shstrndx = header.sectionNameIndex();
     if (shstrndx != SHN_UNDEF && shstrndx < count_) {
         const unsigned char *nm = dataOf(shstrndx);
@@ -130,7 +125,6 @@ const unsigned char *SectionTable::dataOf(unsigned short index) const
     const Elf64_Shdr *sh = at(index);
     if (!sh) return NULL;
 
-    /* .bss 之类的 NOBITS 节在文件中不占空间 */
     if (sh->sh_type == SHT_NOBITS) return NULL;
     if (sh->sh_size == 0) return NULL;
 
@@ -163,7 +157,6 @@ int SectionTable::findByAddress(uint64_t address) const
     if (!parsed_) return -1;
     for (unsigned short i = 0; i < count_; ++i) {
         const Elf64_Shdr *sh = &headers_[i];
-        /* 只考虑占据地址空间的节（有分配标志且大小非 0） */
         if (!(sh->sh_flags & SHF_ALLOC)) continue;
         if (sh->sh_size == 0) continue;
         if (address >= (uint64_t)sh->sh_addr &&

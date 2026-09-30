@@ -1,6 +1,3 @@
-/* ============================================================================
- * cfg/ControlFlowGraph.cpp —— 控制流图实现
- * ========================================================================== */
 #include "cfg/ControlFlowGraph.h"
 #include "core/MemoryArena.h"
 #include "core/Log.h"
@@ -10,9 +7,6 @@
 #include <cstdio>
 #include <cstring>
 
-/* ---------------------------------------------------------------------------
- * 边类型名字
- * ------------------------------------------------------------------------- */
 const char *edgeTypeName(EdgeType type)
 {
     switch (type) {
@@ -27,9 +21,6 @@ const char *edgeTypeName(EdgeType type)
     }
 }
 
-/* ---------------------------------------------------------------------------
- * 构造 / 析构
- * ------------------------------------------------------------------------- */
 ControlFlowGraph::ControlFlowGraph(MemoryArena *arena)
     : arena_(arena),
       function_(NULL),
@@ -42,12 +33,8 @@ ControlFlowGraph::ControlFlowGraph(MemoryArena *arena)
 
 ControlFlowGraph::~ControlFlowGraph()
 {
-    /* 块与边都由 MemoryArena 统一释放，这里不需要逐个 free */
 }
 
-/* ---------------------------------------------------------------------------
- * 构建
- * ------------------------------------------------------------------------- */
 BasicBlock *ControlFlowGraph::addBlock(uint64_t startAddress,
                                        Instruction *first,
                                        Instruction *last)
@@ -102,7 +89,6 @@ Edge *ControlFlowGraph::addEdge(BasicBlock *from, BasicBlock *to,
     e->targetResolved = targetResolved;
     e->label          = label ? label : "";
 
-    /* 向后跳转边（演示性近似）：目标块地址 <= 源块地址 */
     e->isBackwardHint = (to != NULL && from != NULL &&
                          to->startAddress <= from->startAddress);
 
@@ -115,9 +101,6 @@ Edge *ControlFlowGraph::addEdge(BasicBlock *from, BasicBlock *to,
     return e;
 }
 
-/* ---------------------------------------------------------------------------
- * 查找
- * ------------------------------------------------------------------------- */
 BasicBlock *ControlFlowGraph::findBlockByAddress(uint64_t address) const
 {
     for (BasicBlock *b = blocksHead_; b != NULL; b = b->next) {
@@ -140,9 +123,6 @@ BasicBlock *ControlFlowGraph::blockAt(size_t index) const
     return blockIndex_[index];
 }
 
-/* ---------------------------------------------------------------------------
- * 统计
- * ------------------------------------------------------------------------- */
 size_t ControlFlowGraph::instructionCount(void) const
 {
     size_t n = 0;
@@ -206,9 +186,6 @@ size_t ControlFlowGraph::unreachableBlockCount(void) const
     return n;
 }
 
-/* ---------------------------------------------------------------------------
- * 打印
- * ------------------------------------------------------------------------- */
 void ControlFlowGraph::printSummary(void) const
 {
     printf("CFG 摘要:\n");
