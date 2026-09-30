@@ -65,6 +65,7 @@ public:
     void dumpSections(void) const;
     void dumpSymbols(void) const;
     void dumpFunctions(void) const;
+    void dumpSectionHex(void) const;
 
 private:
     BinaryFile   *file_;        /* 基类指针 → MappedBinaryFile（多态） */

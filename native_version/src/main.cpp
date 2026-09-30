@@ -33,6 +33,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 
 /* 命令行子命令 */
 enum Command {
@@ -40,6 +41,7 @@ enum Command {
     CMD_INFO,         /* --info    : ELF 概览          */
     CMD_SECTIONS,     /* --sections: 节表              */
     CMD_SYMBOLS,      /* --symbols : 符号表 / 函数表   */
+    CMD_HEXDUMP,      /* --hexdump : 各节文件内容头部  */
     CMD_DISASM,       /* --disasm  : 自己的反汇编结果 */
     CMD_SUMMARY,      /* --summary : 函数与 CFG 统计  */
     CMD_TEXT,         /* --text    : 文本形式 CFG     */
@@ -57,6 +59,7 @@ static void printUsage(const char *prog)
         "  %s --info demo                     查看 ELF 概览\n"
         "  %s --sections demo                 查看节表\n"
         "  %s --symbols demo                  查看符号表 / 函数表\n"
+        "  %s --hexdump demo                  查看各节的文件内容头部\n"
         "  %s --disasm demo classify          查看自己的反汇编结果\n"
         "  %s --summary demo classify         查看统计信息\n"
         "  %s --batch classify a.elf b.elf    批量分析多个文件\n"
@@ -66,7 +69,7 @@ static void printUsage(const char *prog)
         "  --debug            打开调试日志\n"
         "  --log=<级别>       error | warn | info | debug\n"
         "  -h, --help         显示本帮助\n",
-        prog, prog, prog, prog, prog, prog, prog, prog, prog);
+        prog, prog, prog, prog, prog, prog, prog, prog, prog, prog);
 }
 
 /* 打印函数定位结果 */
@@ -110,7 +113,41 @@ static void printFunctionInfo(const FunctionInfo &fn)
 struct BatchItem {
     const char         *path;
     const FunctionInfo *fn;      /* 目标函数条目（取自函数表视图） */
+    unsigned char      *codeCopy;/* 机器码私有副本（见下）       */
+    size_t              codeSize;
 };
+
+/* ---------------------------------------------------------------------------
+ * 机器码副本
+ * ---------------------------------------------------------------------------
+ * 解析器是复用的：循环里每 open 一个文件，上一个文件的映射就被归还，
+ * 而对比表要等整个循环结束才统一打印。
+ * 因此要跨文件比较机器码，就必须在每个文件还“活着”的时候，
+ * 把目标函数的字节复制到一块自己的堆内存里。
+ * ------------------------------------------------------------------------- */
+static unsigned char *dupCode(const unsigned char *src, size_t size)
+{
+    if (!src || size == 0) return NULL;
+
+    unsigned char *p = (unsigned char *)malloc(size);
+    if (!p) return NULL;
+
+    memcpy(p, src, size);
+    return p;
+}
+
+/* 释放本轮收集到的全部机器码副本 */
+static void freeCodeCopies(BatchItem *items, int n)
+{
+    for (int i = 0; i < n; ++i) {
+        if (items[i].codeCopy) {
+            free(items[i].codeCopy);
+            /* ★★ 课堂演示点（三）：CWE-415 注入点 —— 此处漏掉了置空 ★★
+             * 正常收尾只会调用本函数一次，所以平时看不出问题；
+             * 一旦“提前收尾”的路径也调用它，同一个指针就被释放两次。 */
+        }
+    }
+}
 
 static int runBatch(const char *funcName, const char *const *files, int nfiles)
 {
@@ -119,16 +156,20 @@ static int runBatch(const char *funcName, const char *const *files, int nfiles)
     int       n    = 0;
     int       nOk  = 0;
     int       nHit = 0;
+    int       nFail = 0;
 
     printf("批量分析：函数 '%s'，共 %d 个文件\n", funcName, nfiles);
 
     for (int i = 0; i < nfiles && n < kMaxBatch; i++) {
         BatchItem it;
-        it.path = files[i];
-        it.fn   = NULL;
+        it.path     = files[i];
+        it.fn       = NULL;
+        it.codeCopy = NULL;
+        it.codeSize = 0;
 
         if (!parser.open(files[i])) {
             logWarn("跳过 %s：%s", files[i], parser.lastError());
+            nFail++;
             items[n++] = it;
             continue;
         }
@@ -136,7 +177,12 @@ static int runBatch(const char *funcName, const char *const *files, int nfiles)
 
         /* 记下这个文件里目标函数的条目，留到循环结束后统一对比 */
         it.fn = parser.functions().findByName(funcName);
-        if (it.fn) nHit++;
+        if (it.fn) {
+            nHit++;
+            /* 下一个文件一打开，这个映射就没了，先把机器码复制出来 */
+            it.codeCopy = dupCode(it.fn->code, (size_t)it.fn->size);
+            it.codeSize = it.codeCopy ? (size_t)it.fn->size : 0;
+        }
 
         items[n++] = it;
     }
@@ -165,16 +211,32 @@ static int runBatch(const char *funcName, const char *const *files, int nfiles)
     printf("\n汇总：解析成功 %d 个，定位到 '%s' 的 %d 个（共 %d 个文件）\n",
            nOk, funcName, nHit, nfiles);
 
-    /* ---- 逐个校验每个函数的机器码是否仍可读 ---- */
+    /* ---- 逐个校验每个函数的机器码是否仍可读（读副本，不碰已归还的映像） ---- */
     printf("\n机器码校验（读取各函数首字节）：\n");
     for (int i = 0; i < n; i++) {
-        const FunctionInfo *f = items[i].fn;
-        if (!f || !f->code || f->size == 0) continue;
+        const BatchItem *it = &items[i];
+        if (!it->codeCopy || it->codeSize < 4) continue;
 
         printf("  %-30s 首字节 = %02x %02x %02x %02x\n",
-               items[i].path,
-               f->code[0], f->code[1], f->code[2], f->code[3]);
+               it->path,
+               it->codeCopy[0], it->codeCopy[1],
+               it->codeCopy[2], it->codeCopy[3]);
     }
+
+    /* ---- 收尾 ----
+     * 有文件解析失败时，本次结果是不完整的：先把本轮缓存清掉，
+     * 避免把残缺数据当成结论。
+     */
+    if (nFail > 0) {
+        logWarn("有 %d 个文件解析失败，本次批量分析结果不完整", nFail);
+        freeCodeCopies(items, n);
+        /* ★★ 课堂演示点（三）：CWE-415 注入点 —— 此处漏掉了 return 1; ★★
+         * 少了这个 return，下面“正常收尾”的清理会再执行一遍，
+         * 于是同一批机器码副本被 free 两次。 */
+    }
+
+    freeCodeCopies(items, n);          /* 正常收尾：释放本轮全部副本 */
+
     printf("\n批处理完成。\n");
     return 0;
 }
@@ -298,6 +360,8 @@ int main(int argc, char **argv)
             command = CMD_SECTIONS;
         } else if (strcmp(a, "--symbols") == 0) {
             command = CMD_SYMBOLS;
+        } else if (strcmp(a, "--hexdump") == 0) {
+            command = CMD_HEXDUMP;
         } else if (strcmp(a, "--disasm") == 0) {
             command = CMD_DISASM;
         } else if (strcmp(a, "--summary") == 0) {
@@ -377,6 +441,10 @@ int main(int argc, char **argv)
     if (command == CMD_SYMBOLS) {
         parser.dumpSymbols();
         parser.dumpFunctions();
+        return 0;
+    }
+    if (command == CMD_HEXDUMP) {
+        parser.dumpSectionHex();
         return 0;
     }
 

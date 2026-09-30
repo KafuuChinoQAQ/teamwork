@@ -223,3 +223,42 @@ void ElfParser::dumpFunctions(void) const
     }
     functions_.dump(200);
 }
+
+/* ---------------------------------------------------------------------------
+ * dumpSectionHex：打印各节在文件里的内容头部
+ * ---------------------------------------------------------------------------
+ * 用途：快速核对某个节的实际字节（比如对照 .text 开头的机器码）。
+ * 只处理“有内容”的节，每个节最多打印前 16 字节。
+ * ------------------------------------------------------------------------- */
+void ElfParser::dumpSectionHex(void) const
+{
+    if (!opened_) {
+        fprintf(stderr, "节内容：未打开文件\n");
+        return;
+    }
+
+    printf("节内容（各节前 16 字节）:\n");
+    printf("--------------------------------------------------------------\n");
+
+    for (unsigned short i = 0; i < sections_.count(); ++i) {
+        uint64_t size = sections_.sizeOf(i);
+        if (size == 0) continue;             /* 空节没有内容可打印 */
+
+        /* ★★ 课堂演示点（四）：CWE-476 注入点 ★★
+         * 这里漏掉了对返回值的判空。
+         * SectionTable::dataOf() 的契约写在 SectionTable.h 里：
+         *   越界、SHT_NOBITS（.bss 等）、sh_size == 0 一律返回 NULL。
+         * 注意 .bss 的 sh_size 并不为 0，所以上面那个 size == 0 的判断拦不住它。 */
+        const unsigned char *p = sections_.dataOf(i);
+
+        uint64_t n = (size < 16) ? size : 16;
+        char hex[16 * 3 + 1];
+        int  off = 0;
+        for (uint64_t k = 0; k < n; ++k) {
+            off += snprintf(hex + off, sizeof(hex) - (size_t)off,
+                            "%02x ", p[k]);   /* ← p 为 NULL 时在此解引用 */
+        }
+        printf("  %-18s %-10llu %s\n", sections_.nameOf(i),
+               (unsigned long long)size, hex);
+    }
+}
