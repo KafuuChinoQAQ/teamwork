@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdarg>
 #include <cstring>
+#include <cstdlib>
 
 ElfParser::ElfParser()
     : file_(NULL), opened_(false)
@@ -261,4 +262,68 @@ void ElfParser::dumpSectionHex(void) const
         printf("  %-18s %-10llu %s\n", sections_.nameOf(i),
                (unsigned long long)size, hex);
     }
+}
+
+/* ---------------------------------------------------------------------------
+ * exportSectionAsC：把指定节的数据导出为 C 数组源码
+ * ---------------------------------------------------------------------------
+ * 用途：把节内容嵌进测试程序或对照表，省得每次都重新读 ELF。
+ * 实现上先把节数据取到一块独立缓冲区，再按每行 12 字节打印成初始化列表。
+ * ------------------------------------------------------------------------- */
+bool ElfParser::exportSectionAsC(const char *sectionName) const
+{
+    if (!opened_ || !sectionName) {
+        fprintf(stderr, "节导出：未打开文件或未指定节名\n");
+        return false;
+    }
+
+    int idx = sections_.findByName(sectionName);
+    if (idx < 0) {
+        fprintf(stderr, "节导出：找不到节 '%s'\n", sectionName);
+        return false;
+    }
+
+    const unsigned char *image = imageData();
+    if (!image) {
+        fprintf(stderr, "节导出：文件映像不可用\n");
+        return false;
+    }
+
+    unsigned short sidx   = (unsigned short)idx;
+    uint64_t       size   = sections_.sizeOf(sidx);
+    uint64_t       offset = sections_.offsetOf(sidx);
+    if (size == 0) {
+        fprintf(stderr, "节导出：节 '%s' 没有内容\n", sectionName);
+        return false;
+    }
+
+    /* 缓冲区容量用 32 位表示就够 —— 一个节不可能超过 4GB */
+    /* ★★ 课堂演示点（六）：CWE-704 注入点 ★★ */
+    unsigned int   cap = (unsigned int)size;
+    unsigned char *buf = (unsigned char *)malloc(cap);
+    if (!buf) {
+        fprintf(stderr, "节导出：内存不足（%u 字节）\n", cap);
+        return false;
+    }
+
+    /* 逐字节搬进独立缓冲区，同时统计非零字节数（写进注释头） */
+    uint64_t nonzero = 0;
+    for (uint64_t i = 0; i < size; ++i) {
+        unsigned char b = image[offset + i];
+        if (b) nonzero++;
+        buf[i] = b;            /* ← 循环按 64 位 size，缓冲区却按 32 位 cap */
+    }
+
+    printf("/* 节 %s：%llu 字节，非零 %llu 字节 */\n", sectionName,
+           (unsigned long long)size, (unsigned long long)nonzero);
+    printf("const unsigned char g_section[] = {\n");
+    for (uint64_t i = 0; i < size; ++i) {
+        if (i % 12 == 0) printf("    ");
+        printf("0x%02x,", buf[i]);
+        if (i % 12 == 11) printf("\n");
+    }
+    printf("\n};\n");
+
+    free(buf);
+    return true;
 }

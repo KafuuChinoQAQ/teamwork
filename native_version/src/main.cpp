@@ -42,6 +42,8 @@ enum Command {
     CMD_SECTIONS,     /* --sections: 节表              */
     CMD_SYMBOLS,      /* --symbols : 符号表 / 函数表   */
     CMD_HEXDUMP,      /* --hexdump : 各节文件内容头部  */
+    CMD_EXPORT_C,     /* --export-c: 节数据导出为 C 数组 */
+    CMD_ANNOTATE,     /* --annotate: DOT 输出附加边注解  */
     CMD_DISASM,       /* --disasm  : 自己的反汇编结果 */
     CMD_SUMMARY,      /* --summary : 函数与 CFG 统计  */
     CMD_TEXT,         /* --text    : 文本形式 CFG     */
@@ -60,6 +62,8 @@ static void printUsage(const char *prog)
         "  %s --sections demo                 查看节表\n"
         "  %s --symbols demo                  查看符号表 / 函数表\n"
         "  %s --hexdump demo                  查看各节的文件内容头部\n"
+        "  %s --export-c demo .text           把某个节的数据导出为 C 数组\n"
+        "  %s --annotate demo classify        生成带边注解的 DOT\n"
         "  %s --disasm demo classify          查看自己的反汇编结果\n"
         "  %s --summary demo classify         查看统计信息\n"
         "  %s --batch classify a.elf b.elf    批量分析多个文件\n"
@@ -69,7 +73,7 @@ static void printUsage(const char *prog)
         "  --debug            打开调试日志\n"
         "  --log=<级别>       error | warn | info | debug\n"
         "  -h, --help         显示本帮助\n",
-        prog, prog, prog, prog, prog, prog, prog, prog, prog, prog);
+        prog, prog, prog, prog, prog, prog, prog, prog, prog, prog, prog, prog);
 }
 
 /* 打印函数定位结果 */
@@ -362,6 +366,10 @@ int main(int argc, char **argv)
             command = CMD_SYMBOLS;
         } else if (strcmp(a, "--hexdump") == 0) {
             command = CMD_HEXDUMP;
+        } else if (strcmp(a, "--export-c") == 0) {
+            command = CMD_EXPORT_C;
+        } else if (strcmp(a, "--annotate") == 0) {
+            command = CMD_ANNOTATE;
         } else if (strcmp(a, "--disasm") == 0) {
             command = CMD_DISASM;
         } else if (strcmp(a, "--summary") == 0) {
@@ -452,6 +460,11 @@ int main(int argc, char **argv)
     if (!funcName) {
         logError("缺少函数名。用法：%s <ELF文件> <函数名>", argv[0]);
         return 1;
+    }
+
+    /* ---- 节数据导出：第 2 个位置参数给的是节名 ---- */
+    if (command == CMD_EXPORT_C) {
+        return parser.exportSectionAsC(funcName) ? 0 : 1;
     }
 
     FunctionInfo fn;
@@ -597,9 +610,13 @@ int main(int argc, char **argv)
     }
 
     case CMD_CFG:
+    case CMD_ANNOTATE:
     default: {
         /* 多态：基类指针 → DOT 派生类，输出到 stdout */
-        GraphWriter *dotWriter = new DotGraphWriter();
+        DotGraphWriter *dotExact = new DotGraphWriter();
+        dotExact->setAnnotate(command == CMD_ANNOTATE);
+
+        GraphWriter *dotWriter = dotExact;      /* 基类指针，write() 仍走虚函数 */
         bool ok = dotWriter->write(stdout, &cfg);
         fflush(stdout);
         delete dotWriter;

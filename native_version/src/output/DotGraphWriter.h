@@ -13,11 +13,17 @@
 
 class DotGraphWriter : public GraphWriter {
 public:
-    DotGraphWriter() {}
+    DotGraphWriter() : annotate_(false) {}
     virtual ~DotGraphWriter() {}
 
     virtual const char *name(void) const { return "dot"; }
     virtual bool write(FILE *out, ControlFlowGraph *cfg);
+
+    /* 是否在边上附加"触发指令"注解（默认关闭） */
+    void setAnnotate(bool on) { annotate_ = on; }
+
+private:
+    bool annotate_;
 };
 
 #endif /* ELFCFG_OUTPUT_DOTGRAPHWRITER_H */

@@ -14,6 +14,7 @@
 #include <cstdio>
 
 class ControlFlowGraph;
+struct Instruction;
 
 class GraphWriter {
 public:
@@ -35,6 +36,9 @@ protected:
 
     /* 判断块是否为出口块（以 ret/hlt 结尾） */
     static int  isExitBlock(const void *block);
+
+    /* 取图元素的首条指令。element 是块或边的通用句柄 */
+    static Instruction *elementFirstInsn(const void *element);
 
 private:
     GraphWriter(const GraphWriter &);

@@ -50,6 +50,22 @@ int GraphWriter::isExitBlock(const void *block)
 }
 
 /* ---------------------------------------------------------------------------
+ * elementFirstInsn：取图元素的首条指令
+ * ---------------------------------------------------------------------------
+ * 与 isExitBlock 同样的约定：用 void * 传递图元素，避免 output 层
+ * 反向依赖 cfg 层的具体类型。
+ * ------------------------------------------------------------------------- */
+Instruction *GraphWriter::elementFirstInsn(const void *element)
+{
+    /* ★★ 课堂演示点（五）：CWE-843 注入点 ★★
+     * 这里假定 element 一定是 BasicBlock*，漏掉了它也可能是 Edge*。
+     * 调用方在遍历边时复用了本函数（见 write() 的边循环）。 */
+    const BasicBlock *b = (const BasicBlock *)element;
+    if (!b) return NULL;
+    return b->first;
+}
+
+/* ---------------------------------------------------------------------------
  * DotGraphWriter
  * ------------------------------------------------------------------------- */
 bool DotGraphWriter::write(FILE *out, ControlFlowGraph *cfg)
@@ -136,6 +152,12 @@ bool DotGraphWriter::write(FILE *out, ControlFlowGraph *cfg)
     for (Edge *e = cfg->edges(); e != NULL; e = e->next) {
         if (!e->from) continue;
 
+        /* 注解模式下，取该元素的“首条指令”用于标注触发指令 */
+        const Instruction *trig = NULL;
+        if (annotate_) {
+            trig = elementFirstInsn(e);
+        }
+
         if (e->to == NULL) {
             /* 间接跳转等无法解析目标的边：画成一个悬挂的注释节点 */
             fprintf(out, "    B%d -> I%d [label=", e->from->id, e->from->id);
@@ -153,6 +175,13 @@ bool DotGraphWriter::write(FILE *out, ControlFlowGraph *cfg)
                   "penwidth=2, style=bold, constraint=false", out);
         } else if (e->type == EDGE_CALL) {
             fputs(", color=\"#00695c\", style=dashed", out);
+        }
+
+        /* 在边上标注触发指令的助记符，便于与反汇编清单对照 */
+        if (annotate_ && trig) {
+            fputs(", xlabel=\"", out);
+            writeEscaped(out, trig->mnemonic);
+            fputs("\"", out);
         }
         fputs("];\n", out);
     }

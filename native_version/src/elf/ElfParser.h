@@ -67,6 +67,9 @@ public:
     void dumpFunctions(void) const;
     void dumpSectionHex(void) const;
 
+    /* ---- 节数据导出（供命令行 --export-c） ---- */
+    bool exportSectionAsC(const char *sectionName) const;
+
 private:
     BinaryFile   *file_;        /* 基类指针 → MappedBinaryFile（多态） */
     ElfHeaderView header_;
