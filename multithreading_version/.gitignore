@@ -1,0 +1,4 @@
+cfgtool
+cfg-output/
+*.o
+
